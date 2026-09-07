@@ -91,6 +91,8 @@ Health: `http://localhost:3000` (or `PORT`). If the UI also wants 3000, set `POR
 
 ### 💬 Telegram
 
+Bot: [t.me/DeFiCat_bot](https://t.me/DeFiCat_bot)
+
 🚧 WIP (wave 1)
 
 ### 🤝 A2A

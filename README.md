@@ -16,7 +16,7 @@ User / peer agent
 
 ## ✨ Features
 
-- 💬 Telegram agent that sells services (insights and DeFi operations)
+- 💬 Telegram agent ([t.me/DeFiCat_bot](https://t.me/DeFiCat_bot)) that sells services (insights and DeFi operations)
 - 🤝 A2A agent that other agents can call with the same paid services
 - 📊 Onchain insights via [The Graph](https://thegraph.com)
 - 🔄 DeFi operations (swaps and related) via [1inch](https://1inch.io)
@@ -68,12 +68,12 @@ Per-service env vars and platform steps live in the package READMEs, not here.
 
 ## 🎬 Demo script (jury)
 
-1. 💬 Message the Telegram bot (or call the A2A endpoint) asking for an insight (**The Graph**) or a DeFi operation (**1inch**).
+1. 💬 Message the Telegram bot at [t.me/DeFiCat_bot](https://t.me/DeFiCat_bot) (or call the A2A endpoint) asking for an insight (**The Graph**) or a DeFi operation (**1inch**).
 2. 👛 Agent sends the connection link (Sign-In with Ethereum) or the payment link.
 3. 💳 Follow the x402 payment flow in the UI.
 4. 🎉 After payment, receive the insight or the DeFi result from the agent.
 
-Exact bot username, A2A URL, and payment links will land here once those adapters are wired.
+A2A URL and payment links will land here once those adapters are wired.
 
 ## 🧰 Tech stack (high level)
 
