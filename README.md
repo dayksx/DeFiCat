@@ -30,7 +30,7 @@ User / peer agent
 | [`agents/`](./agents) | NestJS, Node.js, TypeScript | Telegram + A2A, x402, The Graph, 1inch | [agents/README.md](./agents/README.md) |
 | [`ui/`](./ui) | Next.js, React, TypeScript | Payment UI and SIWE wallet auth | [ui/README.md](./ui/README.md) |
 
-Architecture in one page (jury / hackers): [docs/HEXAGONAL_OVERVIEW.md](./docs/HEXAGONAL_OVERVIEW.md). Full import law: [docs/HEXAGONAL.md](./docs/HEXAGONAL.md). Security: [docs/SECURITY.md](./docs/SECURITY.md).
+Hexagonal layout and import rules: [docs/HEXAGONAL.md](./docs/HEXAGONAL.md). Security baseline: [docs/SECURITY.md](./docs/SECURITY.md).
 
 ## 📁 Repo layout
 

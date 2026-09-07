@@ -33,7 +33,7 @@ This folder is the intended Next.js app; scaffold it with `create-next-app` (or 
 - Wallet + SIWE (library TBD: e.g. wagmi / RainbowKit / Dynamic)
 - Client for the agents base URL (`NEXT_PUBLIC_AGENTS_URL`)
 
-Follow [docs/HEXAGONAL.md](../docs/HEXAGONAL.md) for the UI package: pages and hooks render view-models; they do not encode pricing or eligibility rules. Secrets and headers: [docs/SECURITY.md](../docs/SECURITY.md).
+Follow [docs/HEXAGONAL.md](../docs/HEXAGONAL.md) for the UI package: pages and hooks render view-models; they do not encode pricing or eligibility rules. Secrets, SIWE, XSS: [docs/SECURITY.md](../docs/SECURITY.md).
 
 ## ✅ Prerequisites
 
@@ -99,4 +99,4 @@ ui/
 - [Root overview](../README.md)
 - [Agents](../agents/README.md)
 - [Hexagonal architecture](../docs/HEXAGONAL.md)
-- [Security](../docs/SECURITY.md)
+- [Security](../docs/SECURITY.md) · [full](../docs/SECURITY.FULL.md)
