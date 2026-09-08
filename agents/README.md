@@ -62,7 +62,9 @@ Copy [`.env.example`](./.env.example) to `.env`. Names only — fill values loca
 | --- | --- |
 | `PORT` | HTTP listen port (default `3000`) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot |
-| `OPENAI_API_KEY` | LLM (LangChain) — confirm name when wiring config |
+| `LITELLM_API_KEY` | Virtual key from the LiteLLM dashboard |
+| `LITELLM_BASE_URL` | Proxy origin ending in `/v1` |
+| `LITELLM_MODEL` | LiteLLM alias, e.g. `claude-haiku-4.5` or `claude-sonnet-4-6` |
 | `TAVILY_API_KEY` | Search tool, if used |
 | The Graph vars | Gateway / subgraph URL — add to `.env.example` when implemented |
 | 1inch vars | API key / base URL — add to `.env.example` when implemented |

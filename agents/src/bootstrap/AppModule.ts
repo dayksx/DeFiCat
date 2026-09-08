@@ -15,6 +15,7 @@ import {
 import { EchoConversationAdapter } from "../infrastructure/adapters/echo/EchoConversationAdapter.js";
 import { TelegramOutboundAdapter } from "../infrastructure/adapters/telegram/TelegramOutboundAdapter.js";
 import { TelegramInboundAdapter } from "../infrastructure/adapters/telegram/TelegramInboundAdapter.js";
+import { LangGraphConversationAdapter } from "../infrastructure/adapters/langgraph/LangGraphConversationAdapter.js";
 
 const TELEGRAM_BOT = Symbol("TelegramBot");
 
@@ -23,7 +24,16 @@ const TELEGRAM_BOT = Symbol("TelegramBot");
   providers: [
     {
       provide: CONVERSATION_PORT,
-      useClass: EchoConversationAdapter,
+      useFactory: (config: ConfigService, agent: Agent) =>
+        LangGraphConversationAdapter.create({
+          apiKey: config.getOrThrow<string>("LITELLM_API_KEY"),
+          baseURL: config.getOrThrow<string>("LITELLM_BASE_URL"),
+          tavilyApiKey: config.getOrThrow<string>("TAVILY_API_KEY"),
+          model:
+            config.get<string>("LITELLM_MODEL") ?? "claude-haiku-4.5",
+          systemPrompt: agent.persona,
+        }),
+      inject: [ConfigService, Agent],
     },
     {
       provide: TELEGRAM_BOT,

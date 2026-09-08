@@ -1,10 +1,17 @@
-import { Injectable, type OnModuleInit, type OnModuleDestroy } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  type OnModuleInit,
+  type OnModuleDestroy,
+} from "@nestjs/common";
 import type { Telegraf } from "telegraf";
 import { DomainError } from "../../../domain/errors/DomainError.js";
 import type { HandleIncomingMessage } from "../../../app/use-cases/HandleIncomingMessage/HandleIncomingMessage.js";
 
 @Injectable()
 export class TelegramInboundAdapter implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(TelegramInboundAdapter.name);
+
   constructor(
     private readonly bot: Telegraf,
     private readonly handleIncomingMessage: HandleIncomingMessage,
@@ -23,11 +30,15 @@ export class TelegramInboundAdapter implements OnModuleInit, OnModuleDestroy {
           message: msg.text,
         });
       } catch (err) {
-        const text =
-          err instanceof DomainError
-            ? err.message
-            : "Sorry, I could not answer that.";
-        await ctx.reply(text);
+        if (err instanceof DomainError) {
+          await ctx.reply(err.message);
+          return;
+        }
+        this.logger.error(
+          `Failed to handle message from chat ${chatId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+        await ctx.reply("Sorry, I could not answer that.");
       }
     });
     await this.bot.launch();
