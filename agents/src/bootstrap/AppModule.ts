@@ -12,10 +12,14 @@ import {
   MESSAGING_PORT,
   type OutboundMessagingPort,
 } from "../app/ports/messaging/OutboundMessagingPort.js";
-import { EchoConversationAdapter } from "../infrastructure/adapters/echo/EchoConversationAdapter.js";
 import { TelegramOutboundAdapter } from "../infrastructure/adapters/telegram/TelegramOutboundAdapter.js";
 import { TelegramInboundAdapter } from "../infrastructure/adapters/telegram/TelegramInboundAdapter.js";
 import { LangGraphConversationAdapter } from "../infrastructure/adapters/langgraph/LangGraphConversationAdapter.js";
+import {
+  ENS_LOOKUP_PORT,
+  type EnsLookupPort,
+} from "../app/ports/graph/EnsLookupPort.js";
+import { TheGraphEnsAdapter } from "../infrastructure/adapters/thegraph/TheGraphEnsAdapter.js";
 
 const TELEGRAM_BOT = Symbol("TelegramBot");
 
@@ -23,8 +27,20 @@ const TELEGRAM_BOT = Symbol("TelegramBot");
   imports: [ConfigModule.forRoot()],
   providers: [
     {
+      provide: ENS_LOOKUP_PORT,
+      useFactory: (config: ConfigService) =>
+        TheGraphEnsAdapter.create({
+          apiKey: config.getOrThrow<string>("THEGRAPH_API_KEY"),
+        }),
+      inject: [ConfigService],
+    },
+    {
       provide: CONVERSATION_PORT,
-      useFactory: (config: ConfigService, agent: Agent) =>
+      useFactory: (
+        config: ConfigService,
+        agent: Agent,
+        ensLookup: EnsLookupPort,
+      ) =>
         LangGraphConversationAdapter.create({
           apiKey: config.getOrThrow<string>("LITELLM_API_KEY"),
           baseURL: config.getOrThrow<string>("LITELLM_BASE_URL"),
@@ -32,8 +48,9 @@ const TELEGRAM_BOT = Symbol("TelegramBot");
           model:
             config.get<string>("LITELLM_MODEL") ?? "claude-haiku-4.5",
           systemPrompt: agent.persona,
+          ensLookup,
         }),
-      inject: [ConfigService, Agent],
+      inject: [ConfigService, Agent, ENS_LOOKUP_PORT],
     },
     {
       provide: TELEGRAM_BOT,
@@ -50,7 +67,7 @@ const TELEGRAM_BOT = Symbol("TelegramBot");
       provide: Agent,
       useValue: new Agent(
         AgentId.of("defichat"),
-        "You are DeFiChat, a helpful DeFi assistant.",
+        "You are DeFiChat, a helpful DeFi assistant. For ENS names, owners, reverse records, expiry, or recent ENS transfers on Ethereum mainnet, use the lookup_ens tool (The Graph). Use web search for news and prices.",
       ),
     },
     {

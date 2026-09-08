@@ -1,10 +1,40 @@
+import { SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { createAgent } from "langchain";
-import { MemorySaver } from "@langchain/langgraph";
+import {
+  MemorySaver,
+  MessagesAnnotation,
+  START,
+  StateGraph,
+} from "@langchain/langgraph";
+import { ToolNode, toolsCondition } from "@langchain/langgraph/prebuilt";
 import { TavilySearch } from "@langchain/tavily";
 import type { ConversationPort } from "../../../app/ports/conversation/ConversationPort.js";
+import type { EnsLookupPort } from "../../../app/ports/graph/EnsLookupPort.js";
+import { createEnsLookupTool } from "./tools/createEnsLookupTool.js";
 
-type Graph = ReturnType<typeof createAgent>;
+type Graph = ReturnType<typeof compileConversationGraph>;
+
+function compileConversationGraph(opts: {
+  modelWithTools: ReturnType<ChatOpenAI["bindTools"]>;
+  tools: ToolNode;
+  systemPrompt: string;
+}) {
+  const callModel = async (state: typeof MessagesAnnotation.State) => {
+    const response = await opts.modelWithTools.invoke([
+      new SystemMessage(opts.systemPrompt),
+      ...state.messages,
+    ]);
+    return { messages: [response] };
+  };
+
+  return new StateGraph(MessagesAnnotation)
+    .addNode("agent", callModel)
+    .addNode("tools", opts.tools)
+    .addEdge(START, "agent")
+    .addConditionalEdges("agent", toolsCondition)
+    .addEdge("tools", "agent")
+    .compile({ checkpointer: new MemorySaver() });
+}
 
 export class LangGraphConversationAdapter implements ConversationPort {
   constructor(private readonly graph: Graph) {}
@@ -15,6 +45,7 @@ export class LangGraphConversationAdapter implements ConversationPort {
     tavilyApiKey: string;
     model: string;
     systemPrompt: string;
+    ensLookup: EnsLookupPort;
   }): LangGraphConversationAdapter {
     const model = new ChatOpenAI({
       apiKey: opts.apiKey,
@@ -28,10 +59,11 @@ export class LangGraphConversationAdapter implements ConversationPort {
       maxResults: 5,
       topic: "general",
     });
-    const graph = createAgent({
-      model,
-      tools: [search],
-      checkpointer: new MemorySaver(),
+    const lookupEns = createEnsLookupTool(opts.ensLookup);
+    const tools = [search, lookupEns];
+    const graph = compileConversationGraph({
+      modelWithTools: model.bindTools(tools),
+      tools: new ToolNode(tools),
       systemPrompt: opts.systemPrompt,
     });
     return new LangGraphConversationAdapter(graph);

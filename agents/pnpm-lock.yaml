@@ -38,6 +38,12 @@ importers:
       '@nestjs/platform-express':
         specifier: ^12.0.1
         version: 12.0.1(@nestjs/common@12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.0.1)
+      graphql:
+        specifier: ^16.11.0
+        version: 16.14.2
+      graphql-request:
+        specifier: ^7.4.0
+        version: 7.4.0(graphql@16.14.2)
       langchain:
         specifier: ^1.5.10
         version: 1.5.10(@langchain/core@1.2.9(openai@7.10.0(undici@6.20.1)(ws@8.21.3)(zod@4.5.4))(ws@8.21.3))(openai@7.10.0(undici@6.20.1)(ws@8.21.3)(zod@4.5.4))(ws@8.21.3)
@@ -50,6 +56,9 @@ importers:
       telegraf:
         specifier: ^4.16.3
         version: 4.16.3
+      zod:
+        specifier: ^4.5.4
+        version: 4.5.4
     devDependencies:
       '@nestjs/cli':
         specifier: ^12.0.0
@@ -147,6 +156,11 @@ packages:
   '@colors/colors@1.5.0':
     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
     engines: {node: '>=0.1.90'}
+
+  '@graphql-typed-document-node/core@3.2.0':
+    resolution: {integrity: sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ==}
+    peerDependencies:
+      graphql: ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
 
   '@inquirer/ansi@2.0.8':
     resolution: {integrity: sha512-WpQM+Ti6Z40EFwwt+uL2p4UabT+W179zHp6HhLVOzfbwnVn05IPO/eXIZXGNqcT1jbQ15SujNLzQ39k4QPPxBQ==}
@@ -1237,6 +1251,15 @@ packages:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
 
+  graphql-request@7.4.0:
+    resolution: {integrity: sha512-xfr+zFb/QYbs4l4ty0dltqiXIp07U6sl+tOKAb0t50/EnQek6CVVBLjETXi+FghElytvgaAWtIOt3EV7zLzIAQ==}
+    peerDependencies:
+      graphql: 14 - 16
+
+  graphql@16.14.2:
+    resolution: {integrity: sha512-Chq1s4CY7jmh8gO2qvLIJyfCDIN+EHLFW/9iShnp1z8FjBQMoodWP1kDC36VAMXXIvAjj4ARa7ntfAV2BrjsbA==}
+    engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
+
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
@@ -2190,6 +2213,10 @@ snapshots:
 
   '@colors/colors@1.5.0':
     optional: true
+
+  '@graphql-typed-document-node/core@3.2.0(graphql@16.14.2)':
+    dependencies:
+      graphql: 16.14.2
 
   '@inquirer/ansi@2.0.8': {}
 
@@ -3180,6 +3207,13 @@ snapshots:
   globrex@0.1.2: {}
 
   gopd@1.2.0: {}
+
+  graphql-request@7.4.0(graphql@16.14.2):
+    dependencies:
+      '@graphql-typed-document-node/core': 3.2.0(graphql@16.14.2)
+      graphql: 16.14.2
+
+  graphql@16.14.2: {}
 
   has-flag@4.0.0: {}
 

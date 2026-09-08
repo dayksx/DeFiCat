@@ -32,10 +32,13 @@
     "@nestjs/core": "^12.0.1",
     "@nestjs/observe": "^0.1.8",
     "@nestjs/platform-express": "^12.0.1",
+    "graphql": "^16.11.0",
+    "graphql-request": "^7.4.0",
     "langchain": "^1.5.10",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
