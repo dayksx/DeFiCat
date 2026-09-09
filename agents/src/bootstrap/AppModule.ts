@@ -1,27 +1,35 @@
-import { Module } from "@nestjs/common";
-import { ConfigModule, ConfigService } from "@nestjs/config";
-import { Telegraf } from "telegraf";
-import { Agent } from "../domain/agent/Agent.js";
-import { AgentId } from "../domain/agent/AgentId.js";
-import { HandleIncomingMessage } from "../app/use-cases/HandleIncomingMessage/HandleIncomingMessage.js";
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { Telegraf } from 'telegraf';
+import { Agent } from '../domain/agent/Agent.js';
+import { AgentId } from '../domain/agent/AgentId.js';
+import { HandleIncomingMessage } from '../app/use-cases/HandleIncomingMessage/HandleIncomingMessage.js';
 import {
   CONVERSATION_PORT,
   type ConversationPort,
-} from "../app/ports/conversation/ConversationPort.js";
+} from '../app/ports/conversation/ConversationPort.js';
 import {
   MESSAGING_PORT,
   type OutboundMessagingPort,
-} from "../app/ports/messaging/OutboundMessagingPort.js";
-import { TelegramOutboundAdapter } from "../infrastructure/adapters/telegram/TelegramOutboundAdapter.js";
-import { TelegramInboundAdapter } from "../infrastructure/adapters/telegram/TelegramInboundAdapter.js";
-import { LangGraphConversationAdapter } from "../infrastructure/adapters/langgraph/LangGraphConversationAdapter.js";
+} from '../app/ports/messaging/OutboundMessagingPort.js';
+import { TelegramOutboundAdapter } from '../infrastructure/adapters/telegram/TelegramOutboundAdapter.js';
+import { TelegramInboundAdapter } from '../infrastructure/adapters/telegram/TelegramInboundAdapter.js';
+import { LangGraphConversationAdapter } from '../infrastructure/adapters/langgraph/LangGraphConversationAdapter.js';
 import {
   ENS_LOOKUP_PORT,
   type EnsLookupPort,
-} from "../app/ports/graph/EnsLookupPort.js";
-import { TheGraphEnsAdapter } from "../infrastructure/adapters/thegraph/TheGraphEnsAdapter.js";
+} from '../app/ports/graph/EnsLookupPort.js';
+import { TheGraphEnsAdapter } from '../infrastructure/adapters/thegraph/TheGraphEnsAdapter.js';
+import {
+  ENS_REGISTRAR_PORT,
+  type EnsRegistrarPort,
+} from '../app/ports/ens/EnsRegistrarPort.js';
+import { EnsPurchasePolicy } from '../domain/ens/EnsPurchasePolicy.js';
+import { PurchaseEnsName } from '../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
+import { ViemEnsRegistrarAdapter } from '../infrastructure/adapters/ens/ViemEnsRegistrarAdapter.js';
+import { parseEther, type Hex } from 'viem';
 
-const TELEGRAM_BOT = Symbol("TelegramBot");
+const TELEGRAM_BOT = Symbol('TelegramBot');
 
 @Module({
   imports: [ConfigModule.forRoot()],
@@ -30,9 +38,38 @@ const TELEGRAM_BOT = Symbol("TelegramBot");
       provide: ENS_LOOKUP_PORT,
       useFactory: (config: ConfigService) =>
         TheGraphEnsAdapter.create({
-          apiKey: config.getOrThrow<string>("THEGRAPH_API_KEY"),
+          apiKey: config.getOrThrow<string>('THEGRAPH_API_KEY'),
         }),
       inject: [ConfigService],
+    },
+    {
+      provide: ENS_REGISTRAR_PORT,
+      useFactory: (config: ConfigService) =>
+        ViemEnsRegistrarAdapter.create({
+          privateKey: readPrivateKey(config),
+          rpcUrl: config.getOrThrow<string>('ETHEREUM_RPC_URL'),
+        }),
+      inject: [ConfigService],
+    },
+    {
+      provide: EnsPurchasePolicy,
+      useValue: new EnsPurchasePolicy(1, 5),
+    },
+    {
+      provide: PurchaseEnsName,
+      useFactory: (
+        registrar: EnsRegistrarPort,
+        policy: EnsPurchasePolicy,
+        config: ConfigService,
+      ) =>
+        new PurchaseEnsName(
+          registrar,
+          policy,
+          parseEther(
+            config.getOrThrow<string>('ENS_MAX_PURCHASE_ETH'),
+          ).toString(),
+        ),
+      inject: [ENS_REGISTRAR_PORT, EnsPurchasePolicy, ConfigService],
     },
     {
       provide: CONVERSATION_PORT,
@@ -40,22 +77,30 @@ const TELEGRAM_BOT = Symbol("TelegramBot");
         config: ConfigService,
         agent: Agent,
         ensLookup: EnsLookupPort,
+        purchaseEnsName: PurchaseEnsName,
       ) =>
         LangGraphConversationAdapter.create({
-          apiKey: config.getOrThrow<string>("LITELLM_API_KEY"),
-          baseURL: config.getOrThrow<string>("LITELLM_BASE_URL"),
-          tavilyApiKey: config.getOrThrow<string>("TAVILY_API_KEY"),
-          model:
-            config.get<string>("LITELLM_MODEL") ?? "claude-haiku-4.5",
+          apiKey: config.getOrThrow<string>('LITELLM_API_KEY'),
+          baseURL: config.getOrThrow<string>('LITELLM_BASE_URL'),
+          tavilyApiKey: config.getOrThrow<string>('TAVILY_API_KEY'),
+          model: config.get<string>('LITELLM_MODEL') ?? 'claude-haiku-4.5',
           systemPrompt: agent.persona,
           ensLookup,
+          purchaseEnsName,
+          ensBuyerAllowedTelegramChatIds: new Set(
+            config
+              .getOrThrow<string>('ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS')
+              .split(',')
+              .map((id) => id.trim())
+              .filter(Boolean),
+          ),
         }),
-      inject: [ConfigService, Agent, ENS_LOOKUP_PORT],
+      inject: [ConfigService, Agent, ENS_LOOKUP_PORT, PurchaseEnsName],
     },
     {
       provide: TELEGRAM_BOT,
       useFactory: (config: ConfigService) =>
-        new Telegraf(config.getOrThrow<string>("TELEGRAM_BOT_TOKEN")),
+        new Telegraf(config.getOrThrow<string>('TELEGRAM_BOT_TOKEN')),
       inject: [ConfigService],
     },
     {
@@ -66,8 +111,8 @@ const TELEGRAM_BOT = Symbol("TelegramBot");
     {
       provide: Agent,
       useValue: new Agent(
-        AgentId.of("defichat"),
-        "You are DeFiChat, a helpful DeFi assistant. For ENS names, owners, reverse records, expiry, or recent ENS transfers on Ethereum mainnet, use the lookup_ens tool (The Graph). Use web search for news and prices.",
+        AgentId.of('defichat'),
+        'You are DeFiChat, a helpful DeFi assistant. For ENS data use lookup_ens. For ENS availability, quotes, and purchases use purchase_ens. Always quote first and never claim a purchase succeeded unless purchase_ens returns purchased=true. Use web search for news and prices.',
       ),
     },
     {
@@ -88,3 +133,13 @@ const TELEGRAM_BOT = Symbol("TelegramBot");
   ],
 })
 export class AppModule {}
+
+function readPrivateKey(config: ConfigService): Hex {
+  const value = config.getOrThrow<string>('AGENT_PRIVATE_KEY').trim();
+  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(
+      'AGENT_PRIVATE_KEY must be a 32-byte 0x-prefixed private key',
+    );
+  }
+  return value as Hex;
+}
