@@ -36,8 +36,9 @@ describe("TheGraphEnsAdapter", () => {
             name: "vitalik.eth",
             labelName: "vitalik",
             labelhash: "0xlab",
-            createdAt: "1",
-            expiryDate: "2",
+            createdAt: "1623530779",
+            expiryDate: "1789091539",
+            registration: { expiryDate: "1781315539" },
             owner: { id: "0xowner" },
             registrant: { id: "0xreg" },
             wrappedOwner: null,
@@ -67,6 +68,62 @@ describe("TheGraphEnsAdapter", () => {
     );
     expect(result.transfers).toHaveLength(1);
     expect(result.transfers[0]?.transactionId).toBe("0xtx");
+  });
+
+  it("reads expiry from the registration and keeps the domain date as the grace period end", async () => {
+    const graph = new FakeGraph();
+    graph.responses.push(
+      {
+        domains: [
+          {
+            id: "0xabc",
+            name: "dayan.eth",
+            createdAt: "1623530779",
+            expiryDate: "1789091539",
+            registration: { expiryDate: "1781315539" },
+          },
+        ],
+      },
+      { transfers: [] },
+    );
+    const adapter = new TheGraphEnsAdapter(graph);
+
+    const result = await adapter.lookup({ kind: "name", name: "dayan.eth" });
+
+    expect(result.domains[0]).toMatchObject({
+      createdAt: "2021-06-12T20:46:19.000Z",
+      expiryDate: "2026-06-13T01:52:19.000Z",
+      gracePeriodEndDate: "2026-09-11T01:52:19.000Z",
+    });
+  });
+
+  it("leaves dates null for a subdomain, which has no registration", async () => {
+    const graph = new FakeGraph();
+    graph.responses.push(
+      {
+        domains: [
+          {
+            id: "0xabc",
+            name: "alice.wallet.eth",
+            createdAt: "1623530779",
+            expiryDate: null,
+            registration: null,
+          },
+        ],
+      },
+      { transfers: [] },
+    );
+    const adapter = new TheGraphEnsAdapter(graph);
+
+    const result = await adapter.lookup({
+      kind: "name",
+      name: "alice.wallet.eth",
+    });
+
+    expect(result.domains[0]).toMatchObject({
+      expiryDate: null,
+      gracePeriodEndDate: null,
+    });
   });
 
   it("merges owned and reverse-resolved domains for an address", async () => {

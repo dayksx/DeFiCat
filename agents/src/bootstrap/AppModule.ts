@@ -94,6 +94,9 @@ const TELEGRAM_BOT = Symbol('TelegramBot');
               .map((id) => id.trim())
               .filter(Boolean),
           ),
+          timeZone:
+            config.get<string>('AGENT_TIMEZONE') ??
+            Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
       inject: [ConfigService, Agent, ENS_LOOKUP_PORT, PurchaseEnsName],
     },

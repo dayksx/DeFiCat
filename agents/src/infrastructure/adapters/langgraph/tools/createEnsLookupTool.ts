@@ -2,9 +2,11 @@ import { Logger } from "@nestjs/common";
 import { tool } from "langchain";
 import { z } from "zod";
 import type {
+  EnsDomainRecord,
   EnsLookupPort,
   EnsLookupResult,
 } from "../../../../app/ports/graph/EnsLookupPort.js";
+import type { IsoZoneFormatter } from "../../../time/createIsoZoneFormatter.js";
 
 const inputSchema = z.object({
   name: z
@@ -26,7 +28,10 @@ const inputSchema = z.object({
     .describe("Max domains to return for an address lookup (default 10)"),
 });
 
-export function createEnsLookupTool(ens: EnsLookupPort) {
+export function createEnsLookupTool(
+  ens: EnsLookupPort,
+  toLocalIso: IsoZoneFormatter,
+) {
   const logger = new Logger("EnsLookupTool");
 
   return tool(
@@ -74,13 +79,31 @@ export function createEnsLookupTool(ens: EnsLookupPort) {
             : `No ENS domains found for ${address}`,
         });
       }
-      return JSON.stringify({ found: true, ...result });
+      return JSON.stringify({
+        found: true,
+        ...result,
+        domains: result.domains.map((d) => localizeDates(d, toLocalIso)),
+      });
     },
     {
       name: "lookup_ens",
       description:
-        "Look up Ethereum Name Service (ENS) records on mainnet via The Graph. Use for name → address, address → names, owners, expiry, and recent transfers. Not for prices or other chains.",
+        "Look up Ethereum Name Service (ENS) records on mainnet via The Graph. Use for name → address, address → names, owners, expiry, and recent transfers. Not for prices or other chains. Dates are ISO 8601 already converted to the user's local time zone, offset included: report expiryDate and gracePeriodEndDate exactly as given, never shift them and never compute one from the other.",
       schema: inputSchema,
     },
   );
+}
+
+/** The port speaks UTC; the user reads local time, so convert at this boundary. */
+function localizeDates(
+  domain: EnsDomainRecord,
+  toLocalIso: IsoZoneFormatter,
+): EnsDomainRecord {
+  return {
+    ...domain,
+    createdAt: domain.createdAt && toLocalIso(domain.createdAt),
+    expiryDate: domain.expiryDate && toLocalIso(domain.expiryDate),
+    gracePeriodEndDate:
+      domain.gracePeriodEndDate && toLocalIso(domain.gracePeriodEndDate),
+  };
 }

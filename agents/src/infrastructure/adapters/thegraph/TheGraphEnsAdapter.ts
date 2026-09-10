@@ -13,6 +13,10 @@ export const ENS_SUBGRAPH_ID =
 
 export const ENS_SUBGRAPH_URL = `https://gateway.thegraph.com/api/subgraphs/id/${ENS_SUBGRAPH_ID}`;
 
+/**
+ * `Domain.expiryDate` is the registration expiry plus the 90-day grace period,
+ * so the date a name can actually be renewed until lives on `Registration`.
+ */
 const DOMAIN_FIELDS = `
   id
   name
@@ -20,6 +24,7 @@ const DOMAIN_FIELDS = `
   labelhash
   createdAt
   expiryDate
+  registration { expiryDate }
   owner { id }
   registrant { id }
   wrappedOwner { id }
@@ -77,6 +82,7 @@ type GraphDomain = {
   labelhash?: string | null;
   createdAt?: string | null;
   expiryDate?: string | null;
+  registration?: { expiryDate?: string | null } | null;
   owner?: AccountRef;
   registrant?: AccountRef;
   wrappedOwner?: AccountRef;
@@ -209,9 +215,20 @@ function mapDomain(d: GraphDomain): EnsDomainRecord {
     registrant: d.registrant?.id ?? null,
     wrappedOwner: d.wrappedOwner?.id ?? null,
     resolvedAddress: d.resolvedAddress?.id ?? null,
-    createdAt: d.createdAt ?? null,
-    expiryDate: d.expiryDate ?? null,
+    createdAt: toIsoDate(d.createdAt),
+    expiryDate: toIsoDate(d.registration?.expiryDate),
+    gracePeriodEndDate: toIsoDate(d.expiryDate),
   };
+}
+
+/** Unix seconds to ISO 8601, so consumers never have to convert an epoch themselves. */
+function toIsoDate(seconds: string | null | undefined): string | null {
+  if (seconds === null || seconds === undefined) return null;
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return null;
+  const date = new Date(value * 1000);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
 }
 
 function mapTransfer(t: GraphTransfer): EnsTransferRecord {

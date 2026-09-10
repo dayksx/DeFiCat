@@ -13,6 +13,7 @@ import type { EnsLookupPort } from '../../../app/ports/graph/EnsLookupPort.js';
 import type { PurchaseEnsName } from '../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
 import { createEnsLookupTool } from './tools/createEnsLookupTool.js';
 import { createEnsPurchaseTool } from './tools/createEnsPurchaseTool.js';
+import { createIsoZoneFormatter } from '../../time/createIsoZoneFormatter.js';
 
 type Graph = ReturnType<typeof compileConversationGraph>;
 
@@ -50,6 +51,8 @@ export class LangGraphConversationAdapter implements ConversationPort {
     ensLookup: EnsLookupPort;
     purchaseEnsName: PurchaseEnsName;
     ensBuyerAllowedTelegramChatIds: ReadonlySet<string>;
+    /** IANA zone the agent reports dates in, e.g. `Europe/Paris`. */
+    timeZone: string;
   }): LangGraphConversationAdapter {
     const model = new ChatOpenAI({
       apiKey: opts.apiKey,
@@ -63,7 +66,10 @@ export class LangGraphConversationAdapter implements ConversationPort {
       maxResults: 5,
       topic: 'general',
     });
-    const lookupEns = createEnsLookupTool(opts.ensLookup);
+    const lookupEns = createEnsLookupTool(
+      opts.ensLookup,
+      createIsoZoneFormatter(opts.timeZone),
+    );
     const purchaseEns = createEnsPurchaseTool({
       purchaseEnsName: opts.purchaseEnsName,
       allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,

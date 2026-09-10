@@ -8,8 +8,12 @@ export type EnsDomainRecord = {
   registrant: string | null;
   wrappedOwner: string | null;
   resolvedAddress: string | null;
+  /** ISO 8601 UTC. */
   createdAt: string | null;
+  /** ISO 8601 UTC. Registration expiry: renewal is still possible after it. */
   expiryDate: string | null;
+  /** ISO 8601 UTC. Expiry plus the 90-day grace period, after which the name is released. */
+  gracePeriodEndDate: string | null;
 };
 
 export type EnsTransferRecord = {
