@@ -30,14 +30,29 @@ function registrarOf(
 ): EnsRegistrarPort {
   return {
     quote: vi.fn(async () => quoteOf()),
-    buy: vi.fn(async (): Promise<EnsRegistrationReceipt> => ({
-      name: 'deficat.eth',
-      owner: '0x0000000000000000000000000000000000000001',
+    buy: vi.fn(async (): Promise<EnsRegistrationReceipt> => receiptOf()),
+    // PurchaseEnsName only ever calls quote and buy; the rest exists so the
+    // stub satisfies the port that scheduled purchases rely on.
+    commit: vi.fn(async (input) => ({
+      label: input.label,
+      durationSeconds: input.durationSeconds,
+      secret: `0x${'3'.repeat(64)}`,
+      commitment: `0x${'4'.repeat(64)}`,
       commitmentTransactionHash: `0x${'1'.repeat(64)}`,
-      registrationTransactionHash: `0x${'2'.repeat(64)}`,
-      totalPaidWei: '105',
     })),
+    register: vi.fn(async (): Promise<EnsRegistrationReceipt> => receiptOf()),
+    minCommitmentAgeSeconds: vi.fn(async () => 60),
     ...overrides,
+  };
+}
+
+function receiptOf(): EnsRegistrationReceipt {
+  return {
+    name: 'deficat.eth',
+    owner: '0x0000000000000000000000000000000000000001',
+    commitmentTransactionHash: `0x${'1'.repeat(64)}`,
+    registrationTransactionHash: `0x${'2'.repeat(64)}`,
+    totalPaidWei: '105',
   };
 }
 

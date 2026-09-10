@@ -19,6 +19,8 @@ User / peer agent
 - 💬 Telegram agent ([t.me/DeFiCat_bot](https://t.me/DeFiCat_bot)) that sells services (insights and DeFi operations)
 - 🤝 A2A agent that other agents can call with the same paid services
 - 📊 Onchain insights via [The Graph](https://thegraph.com)
+- 🛒 ENS registrations from chat, capped by budget and restricted to an allowlist
+- ⏳ Scheduled ENS purchase: watch a taken name and buy it the moment it drops, via [Temporal](https://temporal.io)
 - 🔄 DeFi operations (swaps and related) via [1inch](https://1inch.io)
 - 💳 x402 payment required before the service runs
 - 🖥️ Web UI to pay for those services and to sign in with Ethereum (SIWE)
@@ -27,7 +29,7 @@ User / peer agent
 
 | Package | Stack | Role | README |
 | --- | --- | --- | --- |
-| [`agents/`](./agents) | NestJS, Node.js, TypeScript | Telegram + A2A, x402, The Graph, 1inch | [agents/README.md](./agents/README.md) |
+| [`agents/`](./agents) | NestJS, Node.js, TypeScript | Telegram + A2A, x402, The Graph, ENS, 1inch | [agents/README.md](./agents/README.md) |
 | [`ui/`](./ui) | Next.js, React, TypeScript | Payment UI and SIWE wallet auth | [ui/README.md](./ui/README.md) |
 
 Hexagonal layout and import rules: [docs/HEXAGONAL.md](./docs/HEXAGONAL.md). Security baseline: [docs/SECURITY.md](./docs/SECURITY.md).
@@ -64,6 +66,8 @@ pnpm run dev -- --port 3001
 - 🤖 Agents: `http://localhost:3000`
 - 🖥️ UI: `http://localhost:3001`
 
+Scheduled ENS purchases need two more processes, a Temporal server and a worker, because a watch can wait months and must survive a restart. Steps are in [agents/README.md](./agents/README.md#-scheduled-purchases-temporal).
+
 Per-service env vars and platform steps live in the package READMEs, not here.
 
 ## 🎬 Demo script (jury)
@@ -79,6 +83,8 @@ A2A URL and payment links will land here once those adapters are wired.
 
 - 🤖 **Agents:** NestJS, TypeScript, Telegraf, LangChain / LangGraph, x402
 - 📊 **Onchain insights:** [The Graph](https://thegraph.com)
+- 🛒 **ENS registrations:** [viem](https://viem.sh) against the ENS controller
+- ⏳ **Durable scheduling:** [Temporal](https://temporal.io) workflows and a dedicated worker
 - 🔄 **DeFi operations:** [1inch](https://1inch.io)
 - 🖥️ **UI:** Next.js (App Router), React, TypeScript, SIWE, wallet connection
 - 💳 **Payments:** HTTP 402 / x402 against agent services
@@ -89,12 +95,15 @@ Copy each package’s `.env.example`. Typical names (values stay in those files)
 
 | Area | Examples |
 | --- | --- |
-| Agents | `PORT`, `TELEGRAM_BOT_TOKEN`, LLM keys, The Graph, 1inch, x402 |
+| Agents | `PORT`, `TELEGRAM_BOT_TOKEN`, LLM keys, `THEGRAPH_API_KEY`, 1inch, x402 |
+| ENS purchases | `ETHEREUM_RPC_URL`, `AGENT_PRIVATE_KEY`, `ENS_MAX_PURCHASE_ETH`, `ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS` |
+| Temporal | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `TEMPORAL_TASK_QUEUE` |
 | UI | `NEXT_PUBLIC_AGENTS_URL`, chain / SIWE / wallet connector keys |
 
 ## 🔗 Links
 
 - [Agents](./agents/README.md)
 - [UI](./ui/README.md)
+- [ENS purchase design](./docs/ENS_PURCHASE.md)
 - [Hexagonal architecture](./docs/HEXAGONAL.md)
 - [Security](./docs/SECURITY.md)

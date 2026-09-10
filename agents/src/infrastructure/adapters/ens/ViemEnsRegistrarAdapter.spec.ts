@@ -88,9 +88,90 @@ describe('ViemEnsRegistrarAdapter', () => {
       'minCommitmentAge',
       'available',
       'rentPrice',
+      'balance',
       'register',
     ]);
     expect(receipt.registrationTransactionHash).toBe(chain.registerHash);
+  });
+
+  it('commits a name that is still registered, then registers once it drops', async () => {
+    const chain = new FakeEnsChain();
+    chain.isAvailable = false;
+    const adapter = new ViemEnsRegistrarAdapter(chain, async () => undefined);
+
+    const commitment = await adapter.commit({
+      label: 'deficat',
+      durationSeconds: 31_536_000,
+    });
+
+    expect(chain.calls).toEqual(['makeCommitment', 'commit']);
+    expect(commitment.commitmentTransactionHash).toBe(chain.commitHash);
+
+    chain.isAvailable = true;
+    const receipt = await adapter.register({
+      label: 'deficat',
+      durationSeconds: 31_536_000,
+      maxTotalCostWei: '200',
+      secret: commitment.secret,
+      commitmentTransactionHash: commitment.commitmentTransactionHash,
+    });
+
+    expect(receipt.registrationTransactionHash).toBe(chain.registerHash);
+    expect(receipt.commitmentTransactionHash).toBe(chain.commitHash);
+  });
+
+  it('reuses a caller-supplied secret so a retried commit stays idempotent', async () => {
+    const chain = new FakeEnsChain();
+    const adapter = new ViemEnsRegistrarAdapter(chain, async () => undefined);
+    const secret = `0x${'a'.repeat(64)}`;
+
+    const first = await adapter.commit({
+      label: 'deficat',
+      durationSeconds: 31_536_000,
+      secret,
+    });
+    const second = await adapter.commit({
+      label: 'deficat',
+      durationSeconds: 31_536_000,
+      secret,
+    });
+
+    expect(first.secret).toBe(secret);
+    expect(second.secret).toBe(secret);
+  });
+
+  it('rejects a malformed secret before touching the chain', async () => {
+    const chain = new FakeEnsChain();
+    const adapter = new ViemEnsRegistrarAdapter(chain, async () => undefined);
+
+    await expect(
+      adapter.commit({
+        label: 'deficat',
+        durationSeconds: 31_536_000,
+        secret: '0xnope',
+      }),
+    ).rejects.toMatchObject({ failure: 'COMMIT_FAILED' });
+    expect(chain.calls).toEqual([]);
+  });
+
+  it('blames the registration when the balance dropped since the commit', async () => {
+    const chain = new FakeEnsChain();
+    chain.balance = async () => 1n;
+    const adapter = new ViemEnsRegistrarAdapter(chain, async () => undefined);
+
+    await expect(
+      adapter.register({
+        label: 'deficat',
+        durationSeconds: 31_536_000,
+        maxTotalCostWei: '200',
+        secret: `0x${'a'.repeat(64)}`,
+        commitmentTransactionHash: chain.commitHash,
+      }),
+    ).rejects.toMatchObject({
+      failure: 'REGISTRATION_FAILED',
+      commitmentTransactionHash: chain.commitHash,
+    });
+    expect(chain.calls).not.toContain('register');
   });
 
   it('does not commit when the quote exceeds the budget', async () => {

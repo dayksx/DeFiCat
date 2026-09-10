@@ -20,20 +20,25 @@ export class EnsPurchasePolicy {
     private readonly maxYears = 5,
   ) {}
 
-  validate(request: EnsPurchaseRequest): ValidatedEnsPurchase {
-    const label = request.label
-      .trim()
-      .toLowerCase()
-      .replace(/\.eth$/, '');
+  /** Label rules alone, for callers that address an existing name without a duration. */
+  normalizeLabel(label: string): { label: string; name: string } {
+    const normalized = label.trim().toLowerCase().replace(/\.eth$/, '');
 
-    if (label.includes('.')) {
+    if (normalized.includes('.')) {
       throw new DomainError('Only second-level .eth names can be purchased');
     }
-    if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/.test(label)) {
+    if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/.test(normalized)) {
       throw new DomainError(
         'ENS label must contain 3-63 lowercase letters, numbers, or inner hyphens',
       );
     }
+
+    return { label: normalized, name: `${normalized}.eth` };
+  }
+
+  validate(request: EnsPurchaseRequest): ValidatedEnsPurchase {
+    const { label, name } = this.normalizeLabel(request.label);
+
     if (
       !Number.isInteger(request.years) ||
       request.years < this.minYears ||
@@ -46,7 +51,7 @@ export class EnsPurchasePolicy {
 
     return {
       label,
-      name: `${label}.eth`,
+      name,
       years: request.years,
       durationSeconds: request.years * YEAR_SECONDS,
     };

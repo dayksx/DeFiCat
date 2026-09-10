@@ -11,8 +11,11 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { mainnet } from 'viem/chains';
 import {
   EnsRegistrationError,
+  type EnsCommitment,
+  type EnsCommitmentInput,
   type EnsRegistrarPort,
   type EnsRegistrationFailure,
+  type EnsRegistrationFromCommitment,
   type EnsRegistrationInput,
   type EnsRegistrationQuote,
   type EnsRegistrationReceipt,
@@ -252,8 +255,31 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
     }
   }
 
+  minCommitmentAgeSeconds(): Promise<number> {
+    return this.chain.minCommitmentAgeSeconds();
+  }
+
   async buy(input: EnsRegistrationInput): Promise<EnsRegistrationReceipt> {
-    const run = this.operation.then(() => this.buyExclusive(input));
+    return this.exclusively(() => this.buyExclusive(input));
+  }
+
+  async commit(input: EnsCommitmentInput): Promise<EnsCommitment> {
+    return this.exclusively(() => this.commitExclusive(input));
+  }
+
+  async register(
+    input: EnsRegistrationFromCommitment,
+  ): Promise<EnsRegistrationReceipt> {
+    return this.exclusively(() => this.registerExclusive(input));
+  }
+
+  /**
+   * One EOA means one nonce, so every signing operation queues behind the
+   * previous one. The `*Exclusive` variants already hold the lock: calling a
+   * public method from inside one would enqueue behind itself and deadlock.
+   */
+  private exclusively<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.operation.then(operation);
     this.operation = run.then(
       () => undefined,
       () => undefined,
@@ -264,19 +290,45 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
   private async buyExclusive(
     input: EnsRegistrationInput,
   ): Promise<EnsRegistrationReceipt> {
+    // Fail before spending any gas when the name is already gone or too pricey.
     const initial = await this.quote(input);
     assertPurchasable(initial, input.maxTotalCostWei);
     await this.assertFunded(initial.valueWithSlippageWei);
 
-    const secret = bytesToHex(randomBytes(32));
-    let commitmentTransactionHash: string;
+    const commitment = await this.commitExclusive({
+      label: input.label,
+      durationSeconds: input.durationSeconds,
+    });
+
+    const minAge = await this.chain.minCommitmentAgeSeconds();
+    await this.wait((minAge + 2) * 1_000);
+
+    return this.registerExclusive({
+      ...input,
+      secret: commitment.secret,
+      commitmentTransactionHash: commitment.commitmentTransactionHash,
+    });
+  }
+
+  private async commitExclusive(
+    input: EnsCommitmentInput,
+  ): Promise<EnsCommitment> {
+    const secret = toSecret(input.secret ?? bytesToHex(randomBytes(32)));
+
     try {
       const commitment = await this.chain.makeCommitment({
         label: input.label,
         durationSeconds: input.durationSeconds,
         secret,
       });
-      commitmentTransactionHash = await this.chain.commit(commitment);
+      const commitmentTransactionHash = await this.chain.commit(commitment);
+      return {
+        label: input.label,
+        durationSeconds: input.durationSeconds,
+        secret,
+        commitment,
+        commitmentTransactionHash,
+      };
     } catch (error) {
       throw wrapError(
         'COMMIT_FAILED',
@@ -284,15 +336,21 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
         error,
       );
     }
+  }
 
-    // Past this point the commitment is mined, so every failure has already cost gas.
+  /** The commitment is already mined here, so every failure has cost gas. */
+  private async registerExclusive(
+    input: EnsRegistrationFromCommitment,
+  ): Promise<EnsRegistrationReceipt> {
+    const secret = toSecret(input.secret);
+
     try {
-      const minAge = await this.chain.minCommitmentAgeSeconds();
-      await this.wait((minAge + 2) * 1_000);
-
       const final = await this.quote(input);
       assertPurchasable(final, input.maxTotalCostWei);
       const value = BigInt(final.valueWithSlippageWei);
+      // The commitment may be hours old: the balance can have moved since.
+      await this.assertFunded(final.valueWithSlippageWei);
+
       const registrationTransactionHash = await this.chain.register({
         label: input.label,
         durationSeconds: input.durationSeconds,
@@ -303,7 +361,7 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
       return {
         name: final.name,
         owner: this.chain.owner,
-        commitmentTransactionHash,
+        commitmentTransactionHash: input.commitmentTransactionHash,
         registrationTransactionHash,
         totalPaidWei: value.toString(),
       };
@@ -315,7 +373,10 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
       throw new EnsRegistrationError(
         'REGISTRATION_FAILED',
         `Commitment was mined but ${reason}`,
-        { cause: error, commitmentTransactionHash },
+        {
+          cause: error,
+          commitmentTransactionHash: input.commitmentTransactionHash,
+        },
       );
     }
   }
@@ -342,6 +403,17 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
 
 function withSlippage(value: bigint): bigint {
   return (value * 105n + 99n) / 100n;
+}
+
+/** A caller-supplied secret crosses a process boundary, so never trust its shape. */
+function toSecret(secret: string): Hex {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(secret)) {
+    throw new EnsRegistrationError(
+      'COMMIT_FAILED',
+      'ENS commitment secret must be a 32-byte 0x-prefixed value',
+    );
+  }
+  return secret as Hex;
 }
 
 function assertPurchasable(

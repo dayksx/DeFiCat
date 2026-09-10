@@ -13,7 +13,11 @@ import type { EnsLookupPort } from '../../../app/ports/graph/EnsLookupPort.js';
 import type { PurchaseEnsName } from '../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
 import { createEnsLookupTool } from './tools/createEnsLookupTool.js';
 import { createEnsPurchaseTool } from './tools/createEnsPurchaseTool.js';
+import { createEnsWatchTools } from './tools/createEnsWatchTools.js';
 import { createIsoZoneFormatter } from '../../time/createIsoZoneFormatter.js';
+import type { ScheduleEnsPurchase } from '../../../app/use-cases/ScheduleEnsPurchase/ScheduleEnsPurchase.js';
+import type { CancelEnsWatch } from '../../../app/use-cases/ScheduleEnsPurchase/CancelEnsWatch.js';
+import type { ListEnsWatches } from '../../../app/use-cases/ScheduleEnsPurchase/ListEnsWatches.js';
 
 type Graph = ReturnType<typeof compileConversationGraph>;
 
@@ -50,6 +54,9 @@ export class LangGraphConversationAdapter implements ConversationPort {
     systemPrompt: string;
     ensLookup: EnsLookupPort;
     purchaseEnsName: PurchaseEnsName;
+    scheduleEnsPurchase: ScheduleEnsPurchase;
+    cancelEnsWatch: CancelEnsWatch;
+    listEnsWatches: ListEnsWatches;
     ensBuyerAllowedTelegramChatIds: ReadonlySet<string>;
     /** IANA zone the agent reports dates in, e.g. `Europe/Paris`. */
     timeZone: string;
@@ -66,15 +73,20 @@ export class LangGraphConversationAdapter implements ConversationPort {
       maxResults: 5,
       topic: 'general',
     });
-    const lookupEns = createEnsLookupTool(
-      opts.ensLookup,
-      createIsoZoneFormatter(opts.timeZone),
-    );
+    const toLocalIso = createIsoZoneFormatter(opts.timeZone);
+    const lookupEns = createEnsLookupTool(opts.ensLookup, toLocalIso);
     const purchaseEns = createEnsPurchaseTool({
       purchaseEnsName: opts.purchaseEnsName,
       allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,
     });
-    const tools = [search, lookupEns, purchaseEns];
+    const watchTools = createEnsWatchTools({
+      scheduleEnsPurchase: opts.scheduleEnsPurchase,
+      cancelEnsWatch: opts.cancelEnsWatch,
+      listEnsWatches: opts.listEnsWatches,
+      allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,
+      toLocalIso,
+    });
+    const tools = [search, lookupEns, purchaseEns, ...watchTools];
     const graph = compileConversationGraph({
       modelWithTools: model.bindTools(tools),
       tools: new ToolNode(tools),

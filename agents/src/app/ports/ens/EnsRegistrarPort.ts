@@ -25,12 +25,50 @@ export type EnsRegistrationReceipt = {
   totalPaidWei: string;
 };
 
+export type EnsCommitmentInput = {
+  label: string;
+  durationSeconds: number;
+  /**
+   * Reuse a secret to make a retried commit idempotent: regenerating one would
+   * mine a second commitment and waste gas. Omit it for a one-shot purchase.
+   */
+  secret?: string;
+};
+
+export type EnsCommitment = {
+  label: string;
+  durationSeconds: number;
+  secret: string;
+  commitment: string;
+  commitmentTransactionHash: string;
+};
+
+export type EnsRegistrationFromCommitment = EnsRegistrationInput & {
+  secret: string;
+  commitmentTransactionHash: string;
+};
+
 export interface EnsRegistrarPort {
   quote(
     input: Omit<EnsRegistrationInput, 'maxTotalCostWei'>,
   ): Promise<EnsRegistrationQuote>;
 
   buy(input: EnsRegistrationInput): Promise<EnsRegistrationReceipt>;
+
+  /**
+   * Mines a commitment. Deliberately does not require the name to be available:
+   * a scheduled purchase commits while the name is still registered, and only
+   * reveals once it drops. Valid for MAX_COMMITMENT_AGE (24h on mainnet).
+   */
+  commit(input: EnsCommitmentInput): Promise<EnsCommitment>;
+
+  /** Reveals a commitment mined earlier. Every failure here has already cost gas. */
+  register(
+    input: EnsRegistrationFromCommitment,
+  ): Promise<EnsRegistrationReceipt>;
+
+  /** Shortest allowed delay between commit and register. */
+  minCommitmentAgeSeconds(): Promise<number>;
 }
 
 /** Failure modes every EnsRegistrarPort implementation must map its errors onto. */

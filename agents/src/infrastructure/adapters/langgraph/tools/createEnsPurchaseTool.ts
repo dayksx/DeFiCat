@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { ValidatedEnsPurchase } from '../../../../domain/ens/EnsPurchasePolicy.js';
 import { EnsPurchaseError } from '../../../../app/use-cases/PurchaseEnsName/EnsPurchaseError.js';
 import type { PurchaseEnsName } from '../../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
+import { telegramChatId } from './telegramChatId.js';
 
 type MessagesState = { messages: BaseMessage[] };
 
@@ -74,6 +75,9 @@ export function createEnsPurchaseTool(opts: {
             budgetEth: formatEther(BigInt(quote.maxBudgetWei)),
             withinBudget: quote.withinBudget,
             confirmationRequired: confirmation,
+            // Porté par le résultat d'outil plutôt que laissé à l'initiative du
+            // modèle : c'est la seule condition où un watch a du sens.
+            schedulable: !quote.available || !quote.withinBudget,
             message: quoteMessage(quote, confirmation),
           });
         } catch (error) {
@@ -132,9 +136,11 @@ function quoteMessage(
   quote: { name: string; available: boolean; withinBudget: boolean },
   confirmation: string,
 ): string {
-  if (!quote.available) return `${quote.name} is already registered`;
+  if (!quote.available) {
+    return `${quote.name} is already registered. Offer to watch it with schedule_ens so it is bought as soon as it drops within budget.`;
+  }
   if (!quote.withinBudget) {
-    return `${quote.name} costs more than the agent budget, so it cannot be bought`;
+    return `${quote.name} costs more than the agent budget right now. Offer to watch it with schedule_ens: the premium falls over time and the purchase fires once it is affordable.`;
   }
   return `Ask the user to send exactly: ${confirmation}`;
 }
@@ -197,8 +203,6 @@ export function authorizeEnsPurchase(opts: {
   years: number;
 }): { allowed: true } | { allowed: false; reason: string } {
   const chatId = telegramChatId(opts.threadId);
-  console.log(">>> chatId:", chatId);
-  console.log(">>> opts.allowedTelegramChatIds:", opts.allowedTelegramChatIds);
   if (chatId === undefined || !opts.allowedTelegramChatIds.has(chatId)) {
     return {
       allowed: false,
@@ -220,12 +224,6 @@ export function authorizeEnsPurchase(opts: {
 
 function normalizeConfirmation(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toUpperCase();
-}
-
-function telegramChatId(threadId: unknown): string | undefined {
-  if (typeof threadId !== 'string') return undefined;
-  const match = /^.+:telegram:([^:]+)$/.exec(threadId);
-  return match?.[1];
 }
 
 function latestHumanText(messages: BaseMessage[]): string {
