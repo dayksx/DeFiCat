@@ -28,7 +28,7 @@ export const ENS_BUYER_CHAT_IDS = Symbol('EnsBuyerChatIds');
  * A Nest module does not inherit another module's providers, and the worker is
  * a separate process with its own composition root. Declaring these twice would
  * mean two places to keep the signer, the budget and the allowlist in sync, so
- * both `AppModule` and `WorkerModule` import this one instead.
+ * both `BotModule` and `WorkerModule` import this one instead.
  */
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],

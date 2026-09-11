@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    // Sortie dédiée au worker. `nest-cli.json` active `deleteOutDir`, donc deux
+    // `nest start --watch` sur le même `dist` se suppriment mutuellement leurs
+    // fichiers : le worker lit son workflow sur disque et meurt s'il tombe
+    // pendant l'effacement de l'autre.
+    "outDir": "./dist-worker"
+  }
+}

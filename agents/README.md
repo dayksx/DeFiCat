@@ -25,8 +25,8 @@ Nest (`bootstrap/`) wires adapters. `@nestjs/*` does not enter `domain/` or `app
 A scheduled ENS purchase waits for months, so it cannot live in the bot's memory. The package therefore ships **two entrypoints** that share the same adapters through `EnsCoreModule`.
 
 ```text
-bootstrap/main.ts          bootstrap/worker.ts
-  AppModule                  WorkerModule
+bootstrap/bot.ts           bootstrap/worker.ts
+  BotModule                  WorkerModule
   ├─ Telegraf (launch)       ├─ Temporal Worker (polls the task queue)
   ├─ LangGraph + tools       └─ activities: quote, commit, register, notify
   └─ ScheduleEnsPurchase
@@ -62,7 +62,7 @@ src/
   app/
     ports/                   # conversation, ens, graph, messaging, watch
     use-cases/               # HandleIncomingMessage, PurchaseEnsName,
-                             #   ScheduleEnsPurchase, CancelEnsWatch
+                             #   EnsWatch (schedule, list, cancel)
   infrastructure/adapters/
     telegram/ langgraph/     # driving + driven chat adapters
     thegraph/ ens/           # ENS reads (The Graph) and writes (viem)
@@ -70,7 +70,7 @@ src/
     watch/                   # in-memory scheduler, for dev and tests
   bootstrap/
     EnsCoreModule.ts         # shared by both processes
-    AppModule.ts  main.ts    # bot process
+    BotModule.ts  bot.ts     # bot process
     WorkerModule.ts worker.ts# Temporal worker process
 ```
 
@@ -208,7 +208,7 @@ Because a query only answers on a live execution, a finished watch reports its o
 
 Bot: [t.me/DeFiCat_bot](https://t.me/DeFiCat_bot)
 
-Telegraf launches from `TelegramInboundAdapter.onModuleInit`, so the bot listens as soon as `main.ts` starts. Only `AppModule` registers that adapter: the worker shares the same Telegraf provider to *send* notifications, and must never register the inbound adapter, or two processes would long-poll the same token.
+Telegraf launches from `TelegramInboundAdapter.onModuleInit`, so the bot listens as soon as `bot.ts` starts. Only `BotModule` registers that adapter: the worker shares the same Telegraf provider to *send* notifications, and must never register the inbound adapter, or two processes would long-poll the same token.
 
 Ask for ENS data (`lookup_ens`), or a quote and a purchase (`purchase_ens`). A purchase needs the chat to be in `ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS` **and** an exact confirmation phrase.
 

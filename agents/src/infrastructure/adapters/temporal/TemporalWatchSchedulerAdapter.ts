@@ -119,8 +119,12 @@ export class TemporalWatchSchedulerAdapter implements EnsWatchSchedulerPort {
       // Le filtrage par chat se fait sur le memo, côté client. Le faire côté
       // serveur demanderait un search attribute déclaré sur le namespace, donc
       // une étape d'infra qui casse `start` si elle est oubliée.
+      //
+      // Les runs clos par un `continueAsNew` gardent le memo du watch : sans les
+      // écarter, un même nom apparaîtrait une fois par rotation, et `result()`
+      // suivrait la chaîne jusqu'au run courant au lieu de rendre un statut.
       for await (const info of this.client.workflow.list({
-        query: `WorkflowType = '${WORKFLOW_TYPE}'`,
+        query: `WorkflowType = '${WORKFLOW_TYPE}' AND ExecutionStatus != 'ContinuedAsNew'`,
       })) {
         const view = await this.viewOf(info);
         if (view === null) continue;

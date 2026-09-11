@@ -3,13 +3,16 @@ import {
   condition,
   defineQuery,
   defineSignal,
+  makeContinueAsNewFunc,
   proxyActivities,
   setHandler,
   sleep,
   uuid4,
+  workflowInfo,
 } from '@temporalio/workflow';
 import type { EnsDropWatchStatus } from '../../../../domain/ens/EnsDropWatch.js';
 import type { EnsDropActivities } from '../activities/ensDrop.activities.js';
+import { nextPollMs } from './pollSchedule.js';
 import type { WatchEnsDropInput } from './watchEnsDrop.types.js';
 
 export const cancelWatchSignal = defineSignal('cancelWatch');
@@ -54,7 +57,17 @@ const notifyActs = proxyActivities<EnsDropActivities>({
 
 /** Marge de réveil avant la fin de grâce : on veut juste être là pour poller. */
 const WAKE_UP_BEFORE_DROP_MS = 23 * 60 * 60 * 1000;
-const POLL_MS = 30_000;
+
+/**
+ * Repart sur une exécution neuve : même `workflowId`, historique vierge. Le
+ * `memo` n'est pas hérité — le SDK ne reporte que le type et la file d'attente —
+ * et c'est lui que lisent `list` et `describe`, donc on le repasse.
+ */
+function rearm(watch: WatchEnsDropInput): Promise<never> {
+  return makeContinueAsNewFunc<typeof watchEnsDrop>({ memo: { ...watch } })(
+    watch,
+  );
+}
 
 export async function watchEnsDrop(
   input: WatchEnsDropInput,
@@ -107,8 +120,20 @@ export async function watchEnsDrop(
   if (await renewed(quote.gracePeriodEndUnix)) return 'expired';
 
   while (!quote.available || !quote.withinBudget) {
+    // L'historique est rejoué en entier à chaque réveil, donc il ne peut pas
+    // être élagué et une attente longue finit par heurter le plafond du
+    // serveur. Celui-ci prévient avant : on redémarre alors sur une exécution
+    // neuve, ce que l'appelant ne voit même pas.
+    if (workflowInfo().continueAsNewSuggested) await rearm(input);
+
+    // Le sommeil peut durer des heures, donc on le coupe net sur une
+    // annulation au lieu de faire attendre le demandeur jusqu'au réveil.
+    await Promise.race([
+      sleep(nextPollMs(quote, input.maxWei, Date.now())),
+      condition(() => cancelled),
+    ]);
     await abortIfCancelled();
-    await sleep(POLL_MS);
+
     quote = await refresh();
     if (await renewed(quote.gracePeriodEndUnix)) return 'expired';
   }

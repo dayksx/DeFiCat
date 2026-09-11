@@ -15,9 +15,9 @@ import { createEnsLookupTool } from './tools/createEnsLookupTool.js';
 import { createEnsPurchaseTool } from './tools/createEnsPurchaseTool.js';
 import { createEnsWatchTools } from './tools/createEnsWatchTools.js';
 import { createIsoZoneFormatter } from '../../time/createIsoZoneFormatter.js';
-import type { ScheduleEnsPurchase } from '../../../app/use-cases/ScheduleEnsPurchase/ScheduleEnsPurchase.js';
-import type { CancelEnsWatch } from '../../../app/use-cases/ScheduleEnsPurchase/CancelEnsWatch.js';
-import type { ListEnsWatches } from '../../../app/use-cases/ScheduleEnsPurchase/ListEnsWatches.js';
+import type { ScheduleEnsPurchase } from '../../../app/use-cases/EnsWatch/ScheduleEnsPurchase.js';
+import type { CancelEnsWatch } from '../../../app/use-cases/EnsWatch/CancelEnsWatch.js';
+import type { ListEnsWatches } from '../../../app/use-cases/EnsWatch/ListEnsWatches.js';
 
 type Graph = ReturnType<typeof compileConversationGraph>;
 

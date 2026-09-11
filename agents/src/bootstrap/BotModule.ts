@@ -22,9 +22,9 @@ import {
 } from '../app/ports/watch/EnsWatchSchedulerPort.js';
 import { EnsPurchasePolicy } from '../domain/ens/EnsPurchasePolicy.js';
 import { PurchaseEnsName } from '../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
-import { ScheduleEnsPurchase } from '../app/use-cases/ScheduleEnsPurchase/ScheduleEnsPurchase.js';
-import { CancelEnsWatch } from '../app/use-cases/ScheduleEnsPurchase/CancelEnsWatch.js';
-import { ListEnsWatches } from '../app/use-cases/ScheduleEnsPurchase/ListEnsWatches.js';
+import { ScheduleEnsPurchase } from '../app/use-cases/EnsWatch/ScheduleEnsPurchase.js';
+import { CancelEnsWatch } from '../app/use-cases/EnsWatch/CancelEnsWatch.js';
+import { ListEnsWatches } from '../app/use-cases/EnsWatch/ListEnsWatches.js';
 import { TemporalWatchSchedulerAdapter } from '../infrastructure/adapters/temporal/TemporalWatchSchedulerAdapter.js';
 import { readTemporalConfig } from '../infrastructure/adapters/temporal/temporal.config.js';
 import { Client, Connection } from '@temporalio/client';
@@ -185,4 +185,4 @@ import {
     },
   ],
 })
-export class AppModule {}
+export class BotModule {}
