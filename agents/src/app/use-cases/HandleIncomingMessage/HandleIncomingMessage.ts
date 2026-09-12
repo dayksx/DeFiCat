@@ -41,7 +41,10 @@ export class HandleIncomingMessage {
     }
 
     const threadId = `${this.agent.id}:${inbound.channel}:${inbound.recipientId}`;
-    const reply = await this.conversation.reply(threadId, inbound.message);
+    const reply = await this.conversation.reply(threadId, inbound.message, {
+      address: binding.address,
+      boundAt: binding.boundAt,
+    });
     await this.messaging.send({
       channel: inbound.channel,
       recipientId: inbound.recipientId,

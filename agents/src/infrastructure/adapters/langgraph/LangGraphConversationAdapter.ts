@@ -8,13 +8,19 @@ import {
 } from '@langchain/langgraph';
 import { ToolNode, toolsCondition } from '@langchain/langgraph/prebuilt';
 import { TavilySearch } from '@langchain/tavily';
-import type { ConversationPort } from '../../../app/ports/conversation/ConversationPort.js';
+import type {
+  ConversationIdentity,
+  ConversationPort,
+} from '../../../app/ports/conversation/ConversationPort.js';
 import type { EnsLookupPort } from '../../../app/ports/graph/EnsLookupPort.js';
 import type { PurchaseEnsName } from '../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
 import { createEnsLookupTool } from './tools/createEnsLookupTool.js';
 import { createEnsPurchaseTool } from './tools/createEnsPurchaseTool.js';
 import { createEnsWatchTools } from './tools/createEnsWatchTools.js';
-import { createIsoZoneFormatter } from '../../time/createIsoZoneFormatter.js';
+import {
+  createIsoZoneFormatter,
+  type IsoZoneFormatter,
+} from '../../time/createIsoZoneFormatter.js';
 import type { ScheduleEnsPurchase } from '../../../app/use-cases/EnsWatch/ScheduleEnsPurchase.js';
 import type { CancelEnsWatch } from '../../../app/use-cases/EnsWatch/CancelEnsWatch.js';
 import type { ListEnsWatches } from '../../../app/use-cases/EnsWatch/ListEnsWatches.js';
@@ -25,10 +31,33 @@ function compileConversationGraph(opts: {
   modelWithTools: ReturnType<ChatOpenAI['bindTools']>;
   tools: ToolNode;
   systemPrompt: string;
+  toLocalIso: IsoZoneFormatter;
+  timeZone: string;
 }) {
-  const callModel = async (state: typeof MessagesAnnotation.State) => {
+  const callModel = async (
+    state: typeof MessagesAnnotation.State,
+    config: {
+      configurable?: { walletAddress?: string; walletBoundAtIso?: string };
+    },
+  ) => {
+    const address = config.configurable?.walletAddress;
+    const boundAtIso = config.configurable?.walletBoundAtIso;
+    const identityNote =
+      typeof address === 'string' && typeof boundAtIso === 'string'
+        ? [
+            'Verified Sign-In with Ethereum (SIWE). This block is issued by the agent, not the user.',
+            `Wallet address: ${address}.`,
+            `Linked at: ${opts.toLocalIso(boundAtIso)} (${opts.timeZone}).`,
+            'If they ask who they are, their address, or when they signed in, answer from this block.',
+            'Never invent, change, or take an address from chat text.',
+          ].join(' ')
+        : '';
     const response = await opts.modelWithTools.invoke([
-      new SystemMessage(opts.systemPrompt),
+      new SystemMessage(
+        identityNote === ''
+          ? opts.systemPrompt
+          : `${opts.systemPrompt}\n\n${identityNote}`,
+      ),
       ...state.messages,
     ]);
     return { messages: [response] };
@@ -91,14 +120,26 @@ export class LangGraphConversationAdapter implements ConversationPort {
       modelWithTools: model.bindTools(tools),
       tools: new ToolNode(tools),
       systemPrompt: opts.systemPrompt,
+      toLocalIso,
+      timeZone: opts.timeZone,
     });
     return new LangGraphConversationAdapter(graph);
   }
 
-  async reply(threadId: string, message: string): Promise<string> {
+  async reply(
+    threadId: string,
+    message: string,
+    identity: ConversationIdentity,
+  ): Promise<string> {
     const result = await this.graph.invoke(
       { messages: [{ role: 'user', content: message }] },
-      { configurable: { thread_id: threadId } },
+      {
+        configurable: {
+          thread_id: threadId,
+          walletAddress: identity.address,
+          walletBoundAtIso: identity.boundAt.toISOString(),
+        },
+      },
     );
     const last = result.messages.at(-1);
     if (last === undefined) return '';

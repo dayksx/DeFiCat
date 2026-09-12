@@ -21,10 +21,16 @@ import type { SiweIssuance } from "../SiweAuth/SiweIssuance.js";
 class FakeConversation implements ConversationPort {
   calls = 0;
   lastThreadId: string | undefined;
+  lastIdentity: { address: string; boundAt: Date } | undefined;
 
-  async reply(threadId: string, message: string): Promise<string> {
+  async reply(
+    threadId: string,
+    message: string,
+    identity: { address: string; boundAt: Date },
+  ): Promise<string> {
     this.calls += 1;
     this.lastThreadId = threadId;
+    this.lastIdentity = identity;
     return `ok:${message}`;
   }
 }
@@ -163,6 +169,10 @@ describe("HandleIncomingMessage", () => {
     });
 
     expect(conversation.lastThreadId).toBe("defichat:telegram:999");
+    expect(conversation.lastIdentity).toEqual({
+      address: "0xabc",
+      boundAt: new Date("2026-09-12T12:00:00.000Z"),
+    });
     expect(messaging.sent[0]?.message).toBe("ok:gm");
   });
 });

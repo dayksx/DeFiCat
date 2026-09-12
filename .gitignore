@@ -23,6 +23,7 @@ node_modules/
 
 # --- Build / Next / Nest ---
 dist/
+dist-worker/
 build/
 out/
 .next/
