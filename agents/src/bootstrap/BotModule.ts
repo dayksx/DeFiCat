@@ -36,7 +36,30 @@ import {
   ENS_BUYER_CHAT_IDS,
   TELEGRAM_BOT,
 } from './EnsCoreModule.js';
+import { SiweBindPolicy } from '../domain/identity/SiweBindPolicy.js';
+import { CLOCK_PORT, type ClockPort } from '../app/ports/clock/ClockPort.js';
+import {
+  IDENTITY_STORE_PORT,
+  type IdentityStorePort,
+} from '../app/ports/identity/IdentityStorePort.js';
+import {
+  TOKEN_GENERATOR_PORT,
+  type TokenGeneratorPort,
+} from '../app/ports/identity/TokenGeneratorPort.js';
+import {
+  SIWE_VERIFIER_PORT,
+  type SiweVerifierPort,
+} from '../app/ports/identity/SiweVerifierPort.js';
+import type { SiweIssuance } from '../app/use-cases/SiweAuth/SiweIssuance.js';
+import { GetSiweChallenge } from '../app/use-cases/SiweAuth/GetSiweChallenge.js';
+import { CompleteSiweBind } from '../app/use-cases/SiweAuth/CompleteSiweBind.js';
+import { SystemClockAdapter } from '../infrastructure/adapters/clock/SystemClockAdapter.js';
+import { InMemoryIdentityStore } from '../infrastructure/adapters/identity/InMemoryIdentityStore.js';
+import { ViemSiweNonceAdapter } from '../infrastructure/adapters/siwe/ViemSiweNonceAdapter.js';
+import { ViemSiweVerifierAdapter } from '../infrastructure/adapters/siwe/ViemSiweVerifierAdapter.js';
+import { SiweAuthController } from '../infrastructure/adapters/http/SiweAuthController.js';
 
+const SIWE_ISSUANCE = Symbol('SiweIssuance');
 /**
  * Composition root du processus bot : Nest câble ports → adapters, sans métier.
  * Les adapters partagés avec le worker viennent d'`EnsCoreModule`.
@@ -48,6 +71,7 @@ import {
  */
 @Module({
   imports: [EnsCoreModule],
+  controllers: [SiweAuthController],
   providers: [
     // Domaine : id + persona. Persona → LangGraph ; canaux → HandleIncomingMessage.
     {
@@ -103,15 +127,91 @@ import {
         ListEnsWatches,
       ],
     },
-    // Use case chat : Agent.assertCanHandle → ConversationPort.reply → MessagingPort.send.
+
+    { provide: CLOCK_PORT, useClass: SystemClockAdapter },
+    { provide: TOKEN_GENERATOR_PORT, useClass: ViemSiweNonceAdapter },
+    { provide: IDENTITY_STORE_PORT, useClass: InMemoryIdentityStore },
+    { provide: SIWE_VERIFIER_PORT, useClass: ViemSiweVerifierAdapter },
+    { provide: SiweBindPolicy, useValue: new SiweBindPolicy() },
+    {
+      provide: SIWE_ISSUANCE,
+      useFactory: (config: ConfigService): SiweIssuance => ({
+        domain: config.getOrThrow<string>('SIWE_DOMAIN'),
+        chainId: Number(config.getOrThrow<string>('SIWE_CHAIN_ID')),
+        statement: config.getOrThrow<string>('SIWE_STATEMENT'),
+        uiOrigin: config.getOrThrow<string>('UI_ORIGIN'),
+      }),
+      inject: [ConfigService],
+    },
+    {
+      provide: GetSiweChallenge,
+      useFactory: (
+        identities: IdentityStorePort,
+        clock: ClockPort,
+        policy: SiweBindPolicy,
+        issuance: SiweIssuance,
+      ) => new GetSiweChallenge(identities, clock, policy, issuance),
+      inject: [IDENTITY_STORE_PORT, CLOCK_PORT, SiweBindPolicy, SIWE_ISSUANCE],
+    },
+    {
+      provide: CompleteSiweBind,
+      useFactory: (
+        identities: IdentityStorePort,
+        verifier: SiweVerifierPort,
+        messaging: OutboundMessagingPort,
+        clock: ClockPort,
+        policy: SiweBindPolicy,
+        issuance: SiweIssuance,
+      ) =>
+        new CompleteSiweBind(
+          identities,
+          verifier,
+          messaging,
+          clock,
+          policy,
+          issuance,
+        ),
+      inject: [
+        IDENTITY_STORE_PORT,
+        SIWE_VERIFIER_PORT,
+        MESSAGING_PORT,
+        CLOCK_PORT,
+        SiweBindPolicy,
+        SIWE_ISSUANCE,
+      ],
+    },
     {
       provide: HandleIncomingMessage,
       useFactory: (
         conversation: ConversationPort,
         messaging: OutboundMessagingPort,
         agent: Agent,
-      ) => new HandleIncomingMessage(conversation, messaging, agent),
-      inject: [CONVERSATION_PORT, MESSAGING_PORT, Agent],
+        identities: IdentityStorePort,
+        tokens: TokenGeneratorPort,
+        clock: ClockPort,
+        policy: SiweBindPolicy,
+        issuance: SiweIssuance,
+      ) =>
+        new HandleIncomingMessage(
+          conversation,
+          messaging,
+          agent,
+          identities,
+          tokens,
+          clock,
+          policy,
+          issuance,
+        ),
+      inject: [
+        CONVERSATION_PORT,
+        MESSAGING_PORT,
+        Agent,
+        IDENTITY_STORE_PORT,
+        TOKEN_GENERATOR_PORT,
+        CLOCK_PORT,
+        SiweBindPolicy,
+        SIWE_ISSUANCE,
+      ],
     },
     // Driving : Telegraf écoute Telegram et appelle HandleIncomingMessage.
     {

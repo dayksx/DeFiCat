@@ -242,11 +242,12 @@ npx tsc --noEmit       # types only
 
 Domain and use-case tests stay offline (fakes, no Nest testing module for core). Watch tests use `InMemoryEnsWatchScheduler`, so no Temporal server is needed.
 
-The workflow itself has no test yet; `@temporalio/testing` skips time, which is the only sane way to exercise a six-month sleep.
+The workflow is covered by `watchEnsDrop.e2e-spec.ts`, which runs under `pnpm test:e2e`. It uses the time-skipping test server, so a months-long sleep and the commit/reveal pair execute in milliseconds — the only place the spending path runs before it runs for real.
 
 ## 🔗 Related
 
 - [UI](../ui/README.md) — SIWE and x402 payment screens
+- [How Temporal works](../docs/TEMPORAL_TUTORIAL.md) — replay, activities, history limits, versioning
 - [ENS purchase design](../docs/ENS_PURCHASE.md)
 - [Hexagonal architecture](../docs/HEXAGONAL.md)
 - [Security](../docs/SECURITY.md)

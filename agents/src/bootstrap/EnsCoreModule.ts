@@ -2,10 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Telegraf } from 'telegraf';
 import { parseEther, type Hex } from 'viem';
-import {
-  ENS_LOOKUP_PORT,
-  type EnsLookupPort,
-} from '../app/ports/graph/EnsLookupPort.js';
+import { ENS_LOOKUP_PORT } from '../app/ports/graph/EnsLookupPort.js';
 import {
   ENS_REGISTRAR_PORT,
   type EnsRegistrarPort,
