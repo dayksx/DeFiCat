@@ -41,7 +41,16 @@ export class TelegramInboundAdapter implements OnModuleInit, OnModuleDestroy {
         await ctx.reply("Sorry, I could not answer that.");
       }
     });
-    await this.bot.launch();
+    // `launch()` ne résout qu'à l'arrêt du bot : l'attendre bloquerait
+    // `onModuleInit`, et donc le `app.listen()` qui expose /auth/siwe.
+    void this.bot
+      .launch(() => this.logger.log("Telegram long polling started"))
+      .catch((err) =>
+        this.logger.error(
+          "Telegram long polling stopped",
+          err instanceof Error ? err.stack : String(err),
+        ),
+      );
   }
 
   async onModuleDestroy(): Promise<void> {

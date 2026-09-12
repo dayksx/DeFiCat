@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  /* Halos Telegram, transparents : ils laissent passer le fond. */
+  --glow-a: rgba(42, 171, 238, 0.22);
+  --glow-b: rgba(34, 158, 217, 0.16);
+  --glow-c: rgba(42, 171, 238, 0.1);
+  --grid-line: rgba(23, 23, 23, 0.04);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --glow-a: rgba(42, 171, 238, 0.26);
+    --glow-b: rgba(34, 158, 217, 0.2);
+    --glow-c: rgba(42, 171, 238, 0.12);
+    --grid-line: rgba(237, 237, 237, 0.05);
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Décor seul : hors du flux, non cliquable, il ne gêne ni le focus ni le DOM. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(60% 50% at 12% -5%, var(--glow-a), transparent 70%),
+    radial-gradient(55% 45% at 88% 8%, var(--glow-b), transparent 70%),
+    radial-gradient(50% 45% at 50% 108%, var(--glow-c), transparent 70%),
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    auto,
+    44px 44px,
+    44px 44px;
+  /* Le quadrillage s'efface vers le bas pour ne pas écraser le formulaire. */
+  mask-image: radial-gradient(120% 100% at 50% 0%, #000 55%, transparent 100%);
+}
