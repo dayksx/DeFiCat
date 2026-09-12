@@ -89,6 +89,8 @@ export class LangGraphConversationAdapter implements ConversationPort {
     ensBuyerAllowedTelegramChatIds: ReadonlySet<string>;
     /** IANA zone the agent reports dates in, e.g. `Europe/Paris`. */
     timeZone: string;
+    /** e.g. `Ethereum Sepolia` — baked into ENS tool descriptions. */
+    networkLabel: string;
   }): LangGraphConversationAdapter {
     const model = new ChatOpenAI({
       apiKey: opts.apiKey,
@@ -103,10 +105,15 @@ export class LangGraphConversationAdapter implements ConversationPort {
       topic: 'general',
     });
     const toLocalIso = createIsoZoneFormatter(opts.timeZone);
-    const lookupEns = createEnsLookupTool(opts.ensLookup, toLocalIso);
+    const lookupEns = createEnsLookupTool(
+      opts.ensLookup,
+      toLocalIso,
+      opts.networkLabel,
+    );
     const purchaseEns = createEnsPurchaseTool({
       purchaseEnsName: opts.purchaseEnsName,
       allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,
+      networkLabel: opts.networkLabel,
     });
     const watchTools = createEnsWatchTools({
       scheduleEnsPurchase: opts.scheduleEnsPurchase,

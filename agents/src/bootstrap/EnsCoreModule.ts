@@ -13,10 +13,16 @@ import { PurchaseEnsName } from '../app/use-cases/PurchaseEnsName/PurchaseEnsNam
 import { TheGraphEnsAdapter } from '../infrastructure/adapters/thegraph/TheGraphEnsAdapter.js';
 import { ViemEnsRegistrarAdapter } from '../infrastructure/adapters/ens/ViemEnsRegistrarAdapter.js';
 import { TelegramOutboundAdapter } from '../infrastructure/adapters/telegram/TelegramOutboundAdapter.js';
+import {
+  parseChainId,
+  resolveEthereumNetwork,
+  type EthereumNetwork,
+} from '../infrastructure/chain/ethereumNetwork.js';
 
 export const TELEGRAM_BOT = Symbol('TelegramBot');
 /** Single source for the chats allowed to spend agent funds. */
 export const ENS_BUYER_CHAT_IDS = Symbol('EnsBuyerChatIds');
+export const ETHEREUM_NETWORK = Symbol('EthereumNetwork');
 
 /**
  * Everything the bot and the Temporal worker both need: ENS reads, on-chain
@@ -42,24 +48,43 @@ export const ENS_BUYER_CHAT_IDS = Symbol('EnsBuyerChatIds');
         ),
       inject: [ConfigService],
     },
+    {
+      provide: ETHEREUM_NETWORK,
+      useFactory: (config: ConfigService): EthereumNetwork =>
+        resolveEthereumNetwork(
+          parseChainId(
+            config.get<string>('CHAIN_ID') ?? config.get<string>('SIWE_CHAIN_ID'),
+          ),
+          {
+            ensRegistrarController: config.get<string>('ENS_REGISTRAR_CONTROLLER'),
+            ensPublicResolver: config.get<string>('ENS_PUBLIC_RESOLVER'),
+            ensSubgraphId: config.get<string>('ENS_SUBGRAPH_ID'),
+          },
+        ),
+      inject: [ConfigService],
+    },
     // Driven : lecture ENS (The Graph). Cotation et date de libération.
     {
       provide: ENS_LOOKUP_PORT,
-      useFactory: (config: ConfigService) =>
+      useFactory: (config: ConfigService, network: EthereumNetwork) =>
         TheGraphEnsAdapter.create({
           apiKey: config.getOrThrow<string>('THEGRAPH_API_KEY'),
+          subgraphId: network.ensSubgraphId,
         }),
-      inject: [ConfigService],
+      inject: [ConfigService, ETHEREUM_NETWORK],
     },
     // Driven : écriture on-chain (commit/register). Seul détenteur de la clé.
     {
       provide: ENS_REGISTRAR_PORT,
-      useFactory: (config: ConfigService) =>
+      useFactory: (config: ConfigService, network: EthereumNetwork) =>
         ViemEnsRegistrarAdapter.create({
           privateKey: readPrivateKey(config),
           rpcUrl: config.getOrThrow<string>('ETHEREUM_RPC_URL'),
+          chain: network.chain,
+          registrarController: network.ensRegistrarController,
+          publicResolver: network.ensPublicResolver,
         }),
-      inject: [ConfigService],
+      inject: [ConfigService, ETHEREUM_NETWORK],
     },
     {
       provide: EnsPurchasePolicy,
@@ -87,7 +112,14 @@ export const ENS_BUYER_CHAT_IDS = Symbol('EnsBuyerChatIds');
     {
       provide: TELEGRAM_BOT,
       useFactory: (config: ConfigService) =>
-        new Telegraf(config.getOrThrow<string>('TELEGRAM_BOT_TOKEN')),
+        new Telegraf(config.getOrThrow<string>('TELEGRAM_BOT_TOKEN'), {
+          // An ENS buy is commit + minCommitmentAge (60s) + register, so it
+          // runs past Telegraf's 90s default and the update would be killed
+          // mid-purchase, after the commit has already spent gas.
+          handlerTimeout: Number(
+            config.get<string>('TELEGRAM_HANDLER_TIMEOUT_MS') ?? '900000',
+          ),
+        }),
       inject: [ConfigService],
     },
     {
@@ -98,6 +130,7 @@ export const ENS_BUYER_CHAT_IDS = Symbol('EnsBuyerChatIds');
   ],
   exports: [
     ConfigModule,
+    ETHEREUM_NETWORK,
     ENS_BUYER_CHAT_IDS,
     ENS_LOOKUP_PORT,
     ENS_REGISTRAR_PORT,

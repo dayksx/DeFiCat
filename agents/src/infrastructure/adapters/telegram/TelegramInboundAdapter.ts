@@ -18,6 +18,16 @@ export class TelegramInboundAdapter implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    // Telegraf's default handler rethrows, which sets a failing exit code and
+    // tears down long polling: one bad update would silence the bot until a
+    // manual restart.
+    this.bot.catch((err, ctx) => {
+      this.logger.error(
+        `Dropped update ${ctx.update.update_id}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    });
+
     this.bot.on("message", async (ctx) => {
       const msg = ctx.message;
       if (msg === undefined || !("text" in msg)) return;

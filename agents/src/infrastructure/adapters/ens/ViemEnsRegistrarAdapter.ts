@@ -8,7 +8,7 @@ import {
   type Hex,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { mainnet } from 'viem/chains';
+import type { Chain } from 'viem/chains';
 import {
   EnsRegistrationError,
   type EnsCommitment,
@@ -21,9 +21,6 @@ import {
   type EnsRegistrationReceipt,
 } from '../../../app/ports/ens/EnsRegistrarPort.js';
 
-export const ENS_REGISTRAR_CONTROLLER =
-  '0x253553366Da8546fC250F225fe3d25d0C782303b';
-export const ENS_PUBLIC_RESOLVER = '0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63';
 
 const ensRegistrarControllerAbi = [
   {
@@ -93,7 +90,7 @@ const ensRegistrarControllerAbi = [
   },
   {
     type: 'function',
-    name: 'MIN_COMMITMENT_AGE',
+    name: 'minCommitmentAge',
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
@@ -134,20 +131,23 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
   static create(opts: {
     privateKey: Hex;
     rpcUrl: string;
+    chain: Chain;
+    registrarController: Address;
+    publicResolver: Address;
   }): ViemEnsRegistrarAdapter {
     const account = privateKeyToAccount(opts.privateKey);
     const publicClient = createPublicClient({
-      chain: mainnet,
+      chain: opts.chain,
       transport: http(opts.rpcUrl),
     });
     const walletClient = createWalletClient({
       account,
-      chain: mainnet,
+      chain: opts.chain,
       transport: http(opts.rpcUrl),
     });
 
     const contract = {
-      address: ENS_REGISTRAR_CONTROLLER as Address,
+      address: opts.registrarController,
       abi: ensRegistrarControllerAbi,
     } as const;
 
@@ -177,7 +177,7 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
             account.address,
             BigInt(input.durationSeconds),
             input.secret,
-            ENS_PUBLIC_RESOLVER,
+            opts.publicResolver,
             [],
             false,
             0,
@@ -198,7 +198,7 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
         Number(
           await publicClient.readContract({
             ...contract,
-            functionName: 'MIN_COMMITMENT_AGE',
+            functionName: 'minCommitmentAge',
           }),
         ),
       register: async (input) => {
@@ -211,7 +211,7 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
             account.address,
             BigInt(input.durationSeconds),
             input.secret,
-            ENS_PUBLIC_RESOLVER,
+            opts.publicResolver,
             [],
             false,
             0,
@@ -369,7 +369,7 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
       const reason =
         error instanceof EnsRegistrationError
           ? error.message
-          : 'the registration transaction did not complete';
+          : `the registration transaction did not complete: ${describeCause(error)}`;
       throw new EnsRegistrationError(
         'REGISTRATION_FAILED',
         `Commitment was mined but ${reason}`,
@@ -439,8 +439,22 @@ function wrapError(
   message: string,
   cause: unknown,
 ): EnsRegistrationError {
-  const detail = cause instanceof Error ? cause.message : String(cause);
-  return new EnsRegistrationError(failure, `${message}: ${detail}`, { cause });
+  return new EnsRegistrationError(failure, `${message}: ${describeCause(cause)}`, {
+    cause,
+  });
+}
+
+/**
+ * viem puts the useful line (`reverted with ...`) in `shortMessage` and the
+ * full multi-page call dump in `message`. Losing it turns an on-chain revert
+ * into an unactionable "did not complete".
+ */
+function describeCause(cause: unknown): string {
+  if (cause instanceof Error) {
+    const short = (cause as { shortMessage?: unknown }).shortMessage;
+    return typeof short === 'string' && short !== '' ? short : cause.message;
+  }
+  return String(cause);
 }
 
 function sleep(milliseconds: number): Promise<void> {

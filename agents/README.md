@@ -80,7 +80,7 @@ src/
 - pnpm (this package pins `packageManager` in `package.json`)
 - Telegram bot token (BotFather)
 - The Graph API key — [thegraph.com/studio/apikeys](https://thegraph.com/studio/apikeys/)
-- Ethereum mainnet RPC URL, and a **dedicated low-balance EOA** for ENS purchases
+- An Ethereum RPC URL for **the same chain as `CHAIN_ID`** (mainnet by default), and a **dedicated low-balance EOA** for ENS purchases
 - [Temporal CLI](https://docs.temporal.io/cli) for scheduled purchases (dev server)
 - LLM / search keys for the reasoning layer
 - 1inch credentials and x402 configuration when those land
@@ -94,10 +94,12 @@ Copy [`.env.example`](./.env.example) to `.env`. Names only — fill values loca
 | --- | --- |
 | `PORT` | HTTP listen port (default `3000`) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot |
+| `TELEGRAM_HANDLER_TIMEOUT_MS` | Max time one update may run (default `900000`). Must exceed an ENS buy (~2 min) |
 | `LITELLM_API_KEY` | Virtual key from the LiteLLM dashboard |
 | `LITELLM_BASE_URL` | Proxy origin ending in `/v1` |
 | `LITELLM_MODEL` | LiteLLM alias, e.g. `claude-haiku-4.5` or `claude-sonnet-4-6` |
 | `TAVILY_API_KEY` | Search tool |
+| `CHAIN_ID` | `1` mainnet (default). SIWE + ENS follow this. Sepolia (`11155111`) can look up and quote but **cannot register**: ENS revoked its v1 controllers there |
 | `THEGRAPH_API_KEY` | ENS subgraph reads |
 | `AGENT_TIMEZONE` | IANA zone the agent reports dates in (default: host zone) |
 | 1inch / x402 vars | Add to `.env.example` when implemented |
@@ -106,7 +108,10 @@ ENS purchases spend real funds, so these four are the ones to get right:
 
 | Variable | Purpose |
 | --- | --- |
-| `ETHEREUM_RPC_URL` | Mainnet RPC for quotes and transactions |
+| `ETHEREUM_RPC_URL` | RPC for `CHAIN_ID` (quotes and transactions) |
+| `ENS_REGISTRAR_CONTROLLER` | Optional override of the preset registrar |
+| `ENS_PUBLIC_RESOLVER` | Optional override of the preset resolver |
+| `ENS_SUBGRAPH_ID` | Optional override of The Graph subgraph id |
 | `AGENT_PRIVATE_KEY` | Signer for commit/register. Dedicated EOA, never a personal wallet |
 | `ENS_MAX_PURCHASE_ETH` | Hard ceiling for one registration, slippage included |
 | `ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS` | Comma-separated chat IDs allowed to spend those funds |

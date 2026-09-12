@@ -43,7 +43,9 @@ const GUIDANCE: Record<string, string> = {
 export function createEnsPurchaseTool(opts: {
   purchaseEnsName: PurchaseEnsName;
   allowedTelegramChatIds: ReadonlySet<string>;
+  networkLabel?: string;
 }) {
+  const networkLabel = opts.networkLabel ?? 'Ethereum';
   const logger = new Logger('EnsPurchaseTool');
 
   return tool(
@@ -126,7 +128,7 @@ export function createEnsPurchaseTool(opts: {
     {
       name: 'purchase_ens',
       description:
-        "Quote or purchase a second-level .eth name with the agent's own Ethereum mainnet EOA. Always call quote first. Call buy only after the authorized user sends the exact confirmation phrase returned by quote. Buying takes about one minute because ENS uses commit-reveal.",
+        `Quote or purchase a second-level .eth name with the agent's own ${networkLabel} EOA. Always call quote first. Call buy only after the authorized user sends the exact confirmation phrase returned by quote. Buying takes about one minute because ENS uses commit-reveal.`,
       schema,
     },
   );

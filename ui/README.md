@@ -45,11 +45,10 @@ If the bot process restarts, in-memory bind tokens die — ask Telegram for a
 
 ```bash
 NEXT_PUBLIC_AGENTS_URL=http://localhost:3000
+NEXT_PUBLIC_CHAIN_ID=1
 ```
 
-The SIWE **chain id**, **domain**, **statement**, and timestamps come from
-`GET {AGENTS}/auth/siwe/challenge?token=`. They must match `SIWE_CHAIN_ID`,
-`SIWE_DOMAIN`, and `UI_ORIGIN` on the agent (no scheme on `SIWE_DOMAIN`).
+`NEXT_PUBLIC_CHAIN_ID` must match agents `CHAIN_ID` (`1` mainnet, `11155111` Sepolia). Wagmi only exposes that chain so MetaMask is asked to switch. The SIWE **domain**, **statement**, and timestamps still come from `GET {AGENTS}/auth/siwe/challenge?token=` and must match `SIWE_DOMAIN` / `UI_ORIGIN` on the agent (no scheme on `SIWE_DOMAIN`).
 
 ## Sign-in flow
 

@@ -58,7 +58,7 @@ export interface EnsRegistrarPort {
   /**
    * Mines a commitment. Deliberately does not require the name to be available:
    * a scheduled purchase commits while the name is still registered, and only
-   * reveals once it drops. Valid for MAX_COMMITMENT_AGE (24h on mainnet).
+   * reveals once it drops. Valid for MAX_COMMITMENT_AGE (24h on mainnet / Sepolia).
    */
   commit(input: EnsCommitmentInput): Promise<EnsCommitment>;
 

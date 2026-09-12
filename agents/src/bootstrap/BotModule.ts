@@ -35,6 +35,7 @@ import {
   EnsCoreModule,
   ENS_BUYER_CHAT_IDS,
   TELEGRAM_BOT,
+  ETHEREUM_NETWORK,
 } from './EnsCoreModule.js';
 import { SiweBindPolicy } from '../domain/identity/SiweBindPolicy.js';
 import { CLOCK_PORT, type ClockPort } from '../app/ports/clock/ClockPort.js';
@@ -51,6 +52,7 @@ import {
   type SiweVerifierPort,
 } from '../app/ports/identity/SiweVerifierPort.js';
 import type { SiweIssuance } from '../app/use-cases/SiweAuth/SiweIssuance.js';
+import type { EthereumNetwork } from '../infrastructure/chain/ethereumNetwork.js';
 import { GetSiweChallenge } from '../app/use-cases/SiweAuth/GetSiweChallenge.js';
 import { CompleteSiweBind } from '../app/use-cases/SiweAuth/CompleteSiweBind.js';
 import { SystemClockAdapter } from '../infrastructure/adapters/clock/SystemClockAdapter.js';
@@ -76,17 +78,20 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
     // Domaine : id + persona. Persona → LangGraph ; canaux → HandleIncomingMessage.
     {
       provide: Agent,
-      useValue: new Agent(
-        AgentId.of('defichat'),
-        [
-          'You are DeFiChat, a helpful DeFi assistant.',
-          'The user signed in with Ethereum (SIWE) before this chat. Every turn includes a verified wallet address and link time — treat that as ground truth. If they ask who they are, their address, or when they connected, answer from it. Never invent or change the address.',
-          'For ENS data use lookup_ens. For ENS availability, quotes, and purchases use purchase_ens. Always quote first and never claim a purchase succeeded unless purchase_ens returns purchased=true.',
-          'When a quote comes back with schedulable=true, meaning the name is taken or above budget, offer schedule_ens so the name is bought automatically once it drops within budget. Never offer schedule_ens for a name that is already available within budget: buy it instead.',
-          'Use list_ens_watches whenever the user asks what is scheduled, watched or pending, and cancel_ens_watch to stop one. Report the statuses exactly as the tools return them.',
-          'Use web search for news and prices.',
-        ].join(' '),
-      ),
+      useFactory: (network: EthereumNetwork) =>
+        new Agent(
+          AgentId.of('defichat'),
+          [
+            'You are DeFiChat, a helpful DeFi assistant.',
+            `You operate on ${network.label} (chain id ${network.chainId}). ENS lookups and purchases use that chain only.`,
+            'The user signed in with Ethereum (SIWE) before this chat. Every turn includes a verified wallet address and link time — treat that as ground truth. If they ask who they are, their address, or when they connected, answer from it. Never invent or change the address.',
+            'For ENS data use lookup_ens. For ENS availability, quotes, and purchases use purchase_ens. Always quote first and never claim a purchase succeeded unless purchase_ens returns purchased=true.',
+            'When a quote comes back with schedulable=true, meaning the name is taken or above budget, offer schedule_ens so the name is bought automatically once it drops within budget. Never offer schedule_ens for a name that is already available within budget: buy it instead.',
+            'Use list_ens_watches whenever the user asks what is scheduled, watched or pending, and cancel_ens_watch to stop one. Report the statuses exactly as the tools return them.',
+            'Use web search for news and prices.',
+          ].join(' '),
+        ),
+      inject: [ETHEREUM_NETWORK],
     },
     // Driven : cerveau LLM. Reçoit persona + lookup + purchase ; appelé par le use case chat.
     {
@@ -100,6 +105,7 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
         scheduleEnsPurchase: ScheduleEnsPurchase,
         cancelEnsWatch: CancelEnsWatch,
         listEnsWatches: ListEnsWatches,
+        network: EthereumNetwork,
       ) =>
         LangGraphConversationAdapter.create({
           apiKey: config.getOrThrow<string>('LITELLM_API_KEY'),
@@ -113,6 +119,7 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
           cancelEnsWatch,
           listEnsWatches,
           ensBuyerAllowedTelegramChatIds: ensBuyerChatIds,
+          networkLabel: network.label,
           timeZone:
             config.get<string>('AGENT_TIMEZONE') ??
             Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -126,6 +133,7 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
         ScheduleEnsPurchase,
         CancelEnsWatch,
         ListEnsWatches,
+        ETHEREUM_NETWORK,
       ],
     },
 
@@ -136,13 +144,16 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
     { provide: SiweBindPolicy, useValue: new SiweBindPolicy() },
     {
       provide: SIWE_ISSUANCE,
-      useFactory: (config: ConfigService): SiweIssuance => ({
+      useFactory: (
+        config: ConfigService,
+        network: EthereumNetwork,
+      ): SiweIssuance => ({
         domain: config.getOrThrow<string>('SIWE_DOMAIN'),
-        chainId: Number(config.getOrThrow<string>('SIWE_CHAIN_ID')),
+        chainId: network.chainId,
         statement: config.getOrThrow<string>('SIWE_STATEMENT'),
         uiOrigin: config.getOrThrow<string>('UI_ORIGIN'),
       }),
-      inject: [ConfigService],
+      inject: [ConfigService, ETHEREUM_NETWORK],
     },
     {
       provide: GetSiweChallenge,

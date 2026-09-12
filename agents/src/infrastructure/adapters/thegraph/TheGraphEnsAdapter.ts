@@ -8,10 +8,7 @@ import type {
   EnsTransferRecord,
 } from "../../../app/ports/graph/EnsLookupPort.js";
 
-export const ENS_SUBGRAPH_ID =
-  "5XqPmWe6gjyrJtFn9cLy237i4cWw2j9HcUJEXsP5qGtH";
-
-export const ENS_SUBGRAPH_URL = `https://gateway.thegraph.com/api/subgraphs/id/${ENS_SUBGRAPH_ID}`;
+import { ensSubgraphUrl } from "../../chain/ethereumNetwork.js";
 
 /**
  * `Domain.expiryDate` is the registration expiry plus the 90-day grace period,
@@ -109,9 +106,12 @@ export class TheGraphEnsAdapter implements EnsLookupPort {
 
   static create(opts: {
     apiKey: string;
+    subgraphId: string;
     endpoint?: string;
   }): TheGraphEnsAdapter {
-    const client = new GraphQLClient(opts.endpoint ?? ENS_SUBGRAPH_URL, {
+    const client = new GraphQLClient(
+      opts.endpoint ?? ensSubgraphUrl(opts.subgraphId),
+      {
       headers: {
         Authorization: `Bearer ${opts.apiKey}`,
       },

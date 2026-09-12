@@ -31,6 +31,7 @@ const inputSchema = z.object({
 export function createEnsLookupTool(
   ens: EnsLookupPort,
   toLocalIso: IsoZoneFormatter,
+  networkLabel = "Ethereum",
 ) {
   const logger = new Logger("EnsLookupTool");
 
@@ -88,7 +89,7 @@ export function createEnsLookupTool(
     {
       name: "lookup_ens",
       description:
-        "Look up Ethereum Name Service (ENS) records on mainnet via The Graph. Use for name → address, address → names, owners, expiry, and recent transfers. Not for prices or other chains. Dates are ISO 8601 already converted to the user's local time zone, offset included: report expiryDate and gracePeriodEndDate exactly as given, never shift them and never compute one from the other.",
+        `Look up Ethereum Name Service (ENS) records on ${networkLabel} via The Graph. Use for name → address, address → names, owners, expiry, and recent transfers. Not for prices or other chains. Dates are ISO 8601 already converted to the user's local time zone, offset included: report expiryDate and gracePeriodEndDate exactly as given, never shift them and never compute one from the other.`,
       schema: inputSchema,
     },
   );
