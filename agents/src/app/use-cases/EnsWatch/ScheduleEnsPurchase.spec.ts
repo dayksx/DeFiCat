@@ -138,6 +138,19 @@ describe('ScheduleEnsPurchase', () => {
     expect(lookup.lookup).not.toHaveBeenCalled();
   });
 
+  it('skips the Telegram allowlist when payment already gated the spend', async () => {
+    const { useCase, scheduler } = useCaseOf();
+
+    await useCase.execute({
+      label: 'deficat',
+      years: 1,
+      chatId: 'a2a:0x1',
+      skipAllowlist: true,
+    });
+
+    expect(scheduler.start).toHaveBeenCalledTimes(1);
+  });
+
   it('tells the caller to buy now instead of arming a watch', async () => {
     const { useCase, scheduler } = useCaseOf({
       quote: quoteOf({ available: true }),

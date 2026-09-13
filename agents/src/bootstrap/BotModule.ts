@@ -82,6 +82,10 @@ import { SettlePaymentAndFulfill } from '../app/use-cases/Billing/SettlePaymentA
 import { InMemoryPaymentStore } from '../infrastructure/adapters/billing/InMemoryPaymentStore.js';
 import { HttpX402FacilitatorAdapter } from '../infrastructure/adapters/x402/HttpX402FacilitatorAdapter.js';
 import { X402PayController } from '../infrastructure/adapters/http/X402PayController.js';
+import { A2AEnsController } from '../infrastructure/adapters/http/A2AEnsController.js';
+import { GetEnsInsight } from '../app/use-cases/EnsInsight/GetEnsInsight.js';
+import { IssueA2APaymentSession } from '../app/use-cases/Billing/IssueA2APaymentSession.js';
+import { HandleA2AEnsSkill } from '../app/use-cases/A2A/HandleA2AEnsSkill.js';
 
 const SIWE_ISSUANCE = Symbol('SiweIssuance');
 const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
@@ -96,7 +100,7 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
  */
 @Module({
   imports: [EnsCoreModule],
-  controllers: [SiweAuthController, X402PayController],
+  controllers: [SiweAuthController, X402PayController, A2AEnsController],
   providers: [
     // Domaine : id + persona. Persona → LangGraph ; canaux → HandleIncomingMessage.
     {
@@ -388,6 +392,54 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
         MESSAGING_PORT,
         GetX402Requirements,
         FulfillPaidIntent,
+      ],
+    },
+    {
+      provide: GetEnsInsight,
+      useFactory: (
+        lookup: EnsLookupPort,
+        purchase: PurchaseEnsName,
+        policy: EnsPurchasePolicy,
+      ) => new GetEnsInsight(lookup, purchase, policy),
+      inject: [ENS_LOOKUP_PORT, PurchaseEnsName, EnsPurchasePolicy],
+    },
+    {
+      provide: IssueA2APaymentSession,
+      useFactory: (
+        payments: PaymentStorePort,
+        tokens: TokenGeneratorPort,
+        clock: ClockPort,
+        policy: PaymentPolicy,
+        issuance: PaymentIssuance,
+      ) =>
+        new IssueA2APaymentSession(
+          payments,
+          tokens,
+          clock,
+          policy,
+          issuance,
+        ),
+      inject: [
+        PAYMENT_STORE_PORT,
+        TOKEN_GENERATOR_PORT,
+        CLOCK_PORT,
+        PaymentPolicy,
+        PAYMENT_ISSUANCE,
+      ],
+    },
+    {
+      provide: HandleA2AEnsSkill,
+      useFactory: (
+        purchase: PurchaseEnsName,
+        issue: IssueA2APaymentSession,
+        requirements: GetX402Requirements,
+        settle: SettlePaymentAndFulfill,
+      ) => new HandleA2AEnsSkill(purchase, issue, requirements, settle),
+      inject: [
+        PurchaseEnsName,
+        IssueA2APaymentSession,
+        GetX402Requirements,
+        SettlePaymentAndFulfill,
       ],
     },
     // Driving : Telegraf écoute Telegram et appelle HandleIncomingMessage.

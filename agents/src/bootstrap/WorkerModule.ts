@@ -117,6 +117,9 @@ const workflowsPath = fileURLToPath(
           },
 
           async notifyChat({ chatId, message }) {
+            if (chatId.startsWith('a2a:')) {
+              return;
+            }
             await messaging.send({
               channel: 'telegram',
               recipientId: chatId,

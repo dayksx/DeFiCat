@@ -96,6 +96,26 @@ describe('PaymentPolicy', () => {
     expect(() => policy.assertPayable(session, exact)).toThrow(DomainError);
   });
 
+  it('lets any wallet pay an A2A invoice', () => {
+    const a2a = policy.issue({
+      nonce: 'a2a-nonce',
+      channel: 'a2a',
+      recipientId: 'a2a:open',
+      payer: '0x0000000000000000000000000000000000000000',
+      intent: { type: 'ens.buy', label: 'kikoulol', years: 1 },
+      now: issuedAt,
+      payTo: TREASURY,
+      chainId: 84532,
+      asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+      uiOrigin: 'http://localhost:3001',
+      uri: 'http://localhost:3000/a2a/ens/buy',
+    });
+    expect(a2a.uri).toBe('http://localhost:3000/a2a/ens/buy');
+    expect(() =>
+      policy.assertPayer(a2a, '0x0000000000000000000000000000000000000001'),
+    ).not.toThrow();
+  });
+
   it('accepts the linked payer case-insensitively and rejects another address', () => {
     expect(() =>
       policy.assertPayer(session, PAYER.toUpperCase().replace('0X', '0x')),

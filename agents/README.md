@@ -60,7 +60,7 @@ The bot only **arms and cancels** watches. The purchase itself is signed later b
 | 💳 x402 | 402 + settle, then auto-run buy or arm watch | in progress |
 | 🧩 Subname mint | Create `degen.kikoulol.eth` under an agent-owned wrapped parent | ✅ `purchase_ens_subname` |
 | 🔄 DeFi services | Same payment rails, different SKUs | **not this demo** |
-| 🤝 A2A | Other agents, same paid ENS services | later |
+| 🤝 A2A | Other agents, same paid ENS services over HTTP + x402 | ✅ `/a2a` |
 | ❤️ HTTP health | `PORT`, default 3000 | ✅ |
 
 `schedule_ens` is offered when a quote has `schedulable=true` (taken or above budget). Arming a watch needs the exact confirmation phrase: the later purchase does not ask again.
@@ -250,7 +250,17 @@ Details: [docs/X402_TELEGRAM.md](../docs/X402_TELEGRAM.md).
 
 ### 🤝 A2A
 
-Not this demo. Same paid ENS SKUs would be the surface later.
+Other agents call the same ENS skills over HTTP. Discover them at `GET /.well-known/agent-card.json`.
+
+| Skill | Method | Price |
+| --- | --- | --- |
+| Insight (The Graph lookup + 2LD quote) | `GET /a2a/ens/insight?name=vitalik.eth` | free |
+| Buy an available 2LD | `POST /a2a/ens/buy` `{ "name": "kikoulol.eth", "years": 1 }` | **0.01 USDC** x402 |
+| Schedule a drop buy | `POST /a2a/ens/schedule` `{ "name": "takenname.eth", "years": 1 }` | **0.1 USDC** x402 |
+
+Paid routes return `402` + `PAYMENT-REQUIRED` until the caller retries with `PAYMENT-SIGNATURE` (x402 v2 `exact` on Base Sepolia). Settlement then **waits** for the ENS job (register now, or arm the Temporal watch) and returns the result in the JSON body. Callers do not need SIWE or a Telegram chat.
+
+An x402 client such as `@x402/fetch` `wrapFetchWithPayment` can pay the 402 automatically. Cap spend at 0.1 USDC so the agent cannot overpay.
 
 ## 🧪 Tests
 

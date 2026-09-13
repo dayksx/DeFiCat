@@ -7,6 +7,7 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService);
   app.enableCors({
     origin: config.getOrThrow<string>('UI_ORIGIN'),
+    allowedHeaders: ['Content-Type', 'PAYMENT-SIGNATURE', 'PAYMENT-REQUIRED'],
     exposedHeaders: ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE'],
   });
   await app.listen(process.env.PORT ?? 3000);

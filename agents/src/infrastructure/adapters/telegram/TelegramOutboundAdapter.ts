@@ -9,6 +9,9 @@ export class TelegramOutboundAdapter implements OutboundMessagingPort {
     recipientId: string;
     message: string;
   }): Promise<void> {
+    if (message.channel === "a2a") {
+      return;
+    }
     if (message.channel !== "telegram") {
       throw new Error(
         `TelegramOutboundAdapter cannot send on channel "${message.channel}"`,

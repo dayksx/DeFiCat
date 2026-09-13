@@ -7,6 +7,12 @@ import { offerFor } from './ServiceCatalog.js';
 /** 15 minutes — TTL de demo / tests. */
 export const PAYMENT_SESSION_TTL_MS = 15 * 60 * 1000;
 
+/** Driving channel for other agents. Any wallet may pay; no SIWE bind. */
+export const A2A_CHANNEL = 'a2a';
+
+/** Placeholder payer on an A2A invoice, replaced by the verified x402 payer. */
+export const A2A_OPEN_PAYER = '0x0000000000000000000000000000000000000000';
+
 export class PaymentPolicy {
   constructor(public readonly ttlMs: number = PAYMENT_SESSION_TTL_MS) {}
 
@@ -21,6 +27,8 @@ export class PaymentPolicy {
     chainId: number;
     asset: string;
     uiOrigin: string;
+    /** Overrides the Telegram UI pay link (A2A resources use the skill URL). */
+    uri?: string;
   }): PaymentSession {
     const origin = input.uiOrigin.replace(/\/$/, '');
     const sku = skuFor(input.intent);
@@ -40,7 +48,7 @@ export class PaymentPolicy {
       intent: input.intent,
       issuedAt: input.now,
       expiresAt: new Date(input.now.getTime() + this.ttlMs),
-      uri: `${origin}/pay?token=${input.nonce}`,
+      uri: input.uri ?? `${origin}/pay?token=${input.nonce}`,
     };
   }
 
@@ -55,6 +63,10 @@ export class PaymentPolicy {
   }
 
   assertPayer(session: PaymentSession, recoveredPayer: string): void {
+    if (session.channel === A2A_CHANNEL) {
+      EthereumAddress.of(recoveredPayer);
+      return;
+    }
     const expected = EthereumAddress.of(session.payer).value;
     const actual = EthereumAddress.of(recoveredPayer).value;
     if (expected !== actual) {

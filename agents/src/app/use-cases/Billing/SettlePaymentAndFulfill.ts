@@ -1,4 +1,5 @@
 import {
+  A2A_CHANNEL,
   explorerTxUrl,
   type PaymentPolicy,
 } from '../../../domain/billing/PaymentPolicy.js';
@@ -8,12 +9,18 @@ import type { X402FacilitatorPort } from '../../ports/billing/X402FacilitatorPor
 import type { PaymentPayload } from '@x402/core/types';
 import type { OutboundMessagingPort } from '../../ports/messaging/OutboundMessagingPort.js';
 import { PaymentError } from './PaymentError.js';
-import type { FulfillPaidIntent } from './FulfillPaidIntent.js';
+import {
+  type FulfillPaidIntent,
+  type PaidIntentOutcome,
+} from './FulfillPaidIntent.js';
 import type { GetX402Requirements } from './GetX402Requirements.js';
+
+export type { PaidIntentOutcome };
 
 export type SettlePaymentInput = {
   token: string;
   payload: PaymentPayload;
+  awaitFulfillment?: boolean;
 };
 
 export type SettlePaymentResult = {
@@ -21,6 +28,7 @@ export type SettlePaymentResult = {
   fulfilling: true;
   txHash: string;
   explorerUrl?: string;
+  fulfillment?: PaidIntentOutcome;
 };
 
 export class SettlePaymentAndFulfill {
@@ -103,11 +111,18 @@ export class SettlePaymentAndFulfill {
     }
 
     const consumed = await this.payments.consumeSession(session.nonce);
+    const payer = verified.payer;
+    const recipientId =
+      consumed.channel === A2A_CHANNEL
+        ? `${A2A_CHANNEL}:${payer.toLowerCase()}`
+        : consumed.recipientId;
+    const forFulfill = { ...consumed, payer, recipientId };
+
     await this.payments.saveReceipt({
       nonce: consumed.nonce,
       channel: consumed.channel,
-      recipientId: consumed.recipientId,
-      payer: consumed.payer,
+      recipientId,
+      payer,
       sku: consumed.sku,
       amountAtomic: consumed.amountAtomic,
       intent: consumed.intent,
@@ -115,19 +130,30 @@ export class SettlePaymentAndFulfill {
       paidAt: this.clock.now(),
     });
 
-    await this.messaging.send({
-      channel: consumed.channel,
-      recipientId: consumed.recipientId,
-      message: this.policy.paidMessage(consumed, txHash),
-    });
+    if (consumed.channel === 'telegram') {
+      await this.messaging.send({
+        channel: consumed.channel,
+        recipientId: consumed.recipientId,
+        message: this.policy.paidMessage(forFulfill, txHash),
+      });
+    }
 
-    void this.fulfill.execute(consumed.intent, consumed);
     const explorerUrl = explorerTxUrl(consumed.chainId, txHash);
-    return {
-      paid: true,
-      fulfilling: true,
+    const base = {
+      paid: true as const,
+      fulfilling: true as const,
       txHash,
       ...(explorerUrl !== undefined ? { explorerUrl } : {}),
     };
+
+    if (input.awaitFulfillment === true) {
+      return {
+        ...base,
+        fulfillment: await this.fulfill.execute(consumed.intent, forFulfill),
+      };
+    }
+
+    void this.fulfill.execute(consumed.intent, forFulfill).catch(() => undefined);
+    return base;
   }
 }

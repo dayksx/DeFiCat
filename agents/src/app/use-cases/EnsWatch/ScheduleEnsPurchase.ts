@@ -14,6 +14,11 @@ export type ScheduleEnsPurchaseRequest = {
   label: string;
   years: number;
   chatId: string;
+  /**
+   * Payment already gated the spend (A2A x402). Telegram still uses the
+   * chat allowlist; this flag only skips that check.
+   */
+  skipAllowlist?: boolean;
 };
 
 export type ScheduleEnsPurchaseResult =
@@ -37,7 +42,7 @@ export class ScheduleEnsPurchase {
   async execute(
     request: ScheduleEnsPurchaseRequest,
   ): Promise<ScheduleEnsPurchaseResult> {
-    this.assertAuthorized(request.chatId);
+    this.assertAuthorized(request);
 
     const valid = this.purchase.validate(request);
     const quote = await this.purchase.quote(valid);
@@ -64,8 +69,11 @@ export class ScheduleEnsPurchase {
     };
   }
 
-  private assertAuthorized(chatId: string): void {
-    if (!this.allowedChatIds.has(chatId)) {
+  private assertAuthorized(request: ScheduleEnsPurchaseRequest): void {
+    if (request.skipAllowlist === true) {
+      return;
+    }
+    if (!this.allowedChatIds.has(request.chatId)) {
       throw new EnsWatchError(
         'UNAUTHORIZED_CHAT',
         'This Telegram chat is not authorized to spend agent funds',
