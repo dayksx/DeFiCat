@@ -38,6 +38,7 @@
     "@temporalio/client": "^1.23.0",
     "@temporalio/worker": "^1.23.0",
     "@temporalio/workflow": "^1.23.0",
+    "@x402/core": "^2.25.0",
     "graphql": "^16.11.0",
     "graphql-request": "^7.4.0",
     "langchain": "^1.5.10",

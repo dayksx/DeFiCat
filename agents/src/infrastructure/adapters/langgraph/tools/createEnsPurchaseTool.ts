@@ -5,6 +5,7 @@ import { tool } from 'langchain';
 import { formatEther } from 'viem';
 import { z } from 'zod';
 import type { ValidatedEnsPurchase } from '../../../../domain/ens/EnsPurchasePolicy.js';
+import { DomainError } from '../../../../domain/errors/DomainError.js';
 import { PaymentError } from '../../../../app/use-cases/Billing/PaymentError.js';
 import type { IssuePaymentSession } from '../../../../app/use-cases/Billing/IssuePaymentSession.js';
 import { EnsPurchaseError } from '../../../../app/use-cases/PurchaseEnsName/EnsPurchaseError.js';
@@ -168,8 +169,7 @@ export function createEnsPurchaseTool(opts: {
     },
     {
       name: 'purchase_ens',
-      description:
-        `Quote or invoice a second-level .eth name bought with the agent's own ${networkLabel} EOA. Always call quote first. Call buy only after the authorized user sends the exact confirmation phrase returned by quote. Buy returns a payUrl; the name is registered after USDC payment, not in this call.`,
+      description: `Quote or invoice a second-level .eth name bought with the agent's own ${networkLabel} EOA. Always call quote first. Call buy only after the authorized user sends the exact confirmation phrase returned by quote. Buy returns a payUrl; the name is registered after USDC payment, not in this call.`,
       schema,
     },
   );
@@ -215,6 +215,19 @@ function failure(
         ? { commitmentTransactionHash: error.commitmentTransactionHash }
         : {}),
       guidance: GUIDANCE[error.code] ?? GUIDANCE.UNEXPECTED_ERROR,
+    });
+  }
+
+  // A policy refusal (e.g. the linked wallet is the treasury) already reads as
+  // an instruction: dropping it into UNEXPECTED_ERROR would hide the fix.
+  if (error instanceof DomainError) {
+    return JSON.stringify({
+      action,
+      purchased: false,
+      code: 'INVALID_REQUEST',
+      retryable: false,
+      error: error.message,
+      guidance: 'Repeat this reason to the user verbatim. Do not retry.',
     });
   }
 

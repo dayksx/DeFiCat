@@ -1,16 +1,15 @@
-import { DomainError } from "../../../domain/errors/DomainError.js";
-import type { PaidIntent } from "../../../domain/billing/PaidIntent.js";
-import { intentKey } from "../../../domain/billing/PaidIntent.js";
-import type { PaymentPolicy } from "../../../domain/billing/PaymentPolicy.js";
-import type { ServiceOffer } from "../../../domain/billing/ServiceCatalog.js";
-import { offerFor } from "../../../domain/billing/ServiceCatalog.js";
-import { skuFor } from "../../../domain/billing/PaidIntent.js";
-import type { ClockPort } from "../../ports/clock/ClockPort.js";
-import type { IdentityStorePort } from "../../ports/identity/IdentityStorePort.js";
-import type { TokenGeneratorPort } from "../../ports/identity/TokenGeneratorPort.js";
-import type { PaymentStorePort } from "../../ports/billing/PaymentStorePort.js";
-import { PaymentError } from "./PaymentError.js";
-import type { PaymentIssuance } from "./PaymentIssuance.js";
+import type { PaidIntent } from '../../../domain/billing/PaidIntent.js';
+import { intentKey } from '../../../domain/billing/PaidIntent.js';
+import type { PaymentPolicy } from '../../../domain/billing/PaymentPolicy.js';
+import type { ServiceOffer } from '../../../domain/billing/ServiceCatalog.js';
+import { offerFor } from '../../../domain/billing/ServiceCatalog.js';
+import { skuFor } from '../../../domain/billing/PaidIntent.js';
+import type { ClockPort } from '../../ports/clock/ClockPort.js';
+import type { IdentityStorePort } from '../../ports/identity/IdentityStorePort.js';
+import type { TokenGeneratorPort } from '../../ports/identity/TokenGeneratorPort.js';
+import type { PaymentStorePort } from '../../ports/billing/PaymentStorePort.js';
+import { PaymentError } from './PaymentError.js';
+import type { PaymentIssuance } from './PaymentIssuance.js';
 
 export type IssuePaymentSessionInput = {
   channel: string;
@@ -44,8 +43,8 @@ export class IssuePaymentSession {
     );
     if (binding === undefined) {
       throw new PaymentError(
-        "NOT_LINKED",
-        "Sign in with Ethereum before paying for a service",
+        'NOT_LINKED',
+        'Sign in with Ethereum before paying for a service',
       );
     }
 

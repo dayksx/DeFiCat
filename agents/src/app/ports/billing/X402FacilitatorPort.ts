@@ -1,17 +1,6 @@
-export const X402_FACILITATOR_PORT = Symbol("X402FacilitatorPort");
+import type { PaymentPayload, PaymentRequirements } from '@x402/core/types';
 
-export type X402PaymentRequirements = {
-  scheme: "exact";
-  network: string;
-  maxAmountRequired: string;
-  resource: string;
-  description: string;
-  mimeType: "application/json";
-  payTo: string;
-  asset: string;
-  maxTimeoutSeconds: number;
-  extra: { name: string; version: string };
-};
+export const X402_FACILITATOR_PORT = Symbol('X402FacilitatorPort');
 
 export type X402VerifyResult = {
   valid: boolean;
@@ -25,12 +14,12 @@ export type X402SettleResult = {
 
 export interface X402FacilitatorPort {
   verify(input: {
-    payload: unknown;
-    requirements: X402PaymentRequirements;
+    payload: PaymentPayload;
+    requirements: PaymentRequirements;
   }): Promise<X402VerifyResult>;
 
   settle(input: {
-    payload: unknown;
-    requirements: X402PaymentRequirements;
+    payload: PaymentPayload;
+    requirements: PaymentRequirements;
   }): Promise<X402SettleResult>;
 }

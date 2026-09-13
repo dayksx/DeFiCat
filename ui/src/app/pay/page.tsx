@@ -1,13 +1,31 @@
 "use client";
 
+import { x402Client } from "@x402/core/client";
+import { x402HTTPClient } from "@x402/core/http";
+import type { PaymentRequired } from "@x402/core/types";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import type { ClientEvmSigner } from "@x402/evm";
 import { getAddress } from "viem";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-import { useAccount, useConnect, useSwitchChain } from "wagmi";
-import { baseSepolia } from "wagmi/chains";
+import { Suspense, useState } from "react";
+import {
+  useAccount,
+  useConnect,
+  useSwitchChain,
+  useWalletClient,
+} from "wagmi";
+import { paymentChain } from "../../../lib/wagmi";
 
 const AGENTS = process.env.NEXT_PUBLIC_AGENTS_URL ?? "http://localhost:3000";
 const NEW_LINK = "please chat to DeFiCat to get a new payment link";
+const PAYMENT_NETWORK = `eip155:${paymentChain.id}` as const;
+
+type RequirementsResponse = {
+  paymentRequired: PaymentRequired;
+  payer: string;
+  nonce: string;
+  expirationTime: string;
+};
 
 export default function PayPage() {
   return (
@@ -20,25 +38,24 @@ export default function PayPage() {
 function PayForm() {
   const token = useSearchParams().get("token") ?? "";
   const { address, isConnected, chainId } = useAccount();
+  const { data: walletClient } = useWalletClient();
   const { connectAsync, connectors, isPending: connecting } = useConnect();
   const { switchChainAsync } = useSwitchChain();
-  const [mounted, setMounted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [paid, setPaid] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  useEffect(() => setMounted(true), []);
-
   async function onPay() {
-    if (!token || !address || busy) return;
+    if (!token || !address || !walletClient || busy) return;
     setBusy(true);
+    setStatus(null);
     try {
-      if (chainId !== baseSepolia.id) {
-        await switchChainAsync({ chainId: baseSepolia.id });
+      if (chainId !== paymentChain.id) {
+        await switchChainAsync({ chainId: paymentChain.id });
       }
       const res = await fetch(
         `${AGENTS}/pay/x402?token=${encodeURIComponent(token)}`,
       );
-      if (res.status === 401) {
+      if (res.status === 401 || res.status === 410) {
         setStatus(`Sign-in / pay link timed out, ${NEW_LINK}`);
         return;
       }
@@ -46,24 +63,64 @@ function PayForm() {
         setStatus(`DeFiCat could not quote that, ${NEW_LINK}`);
         return;
       }
-      const requirements = await res.json();
+      const requirements = (await res.json()) as RequirementsResponse;
       if (getAddress(address) !== getAddress(requirements.payer)) {
         setStatus("Reconnect the wallet linked to Telegram.");
         return;
       }
-      // TODO: build + sign the x402 payload from `requirements` (EIP-3009).
-      const payload = { /* signed payment */ };
+      if (
+        requirements.paymentRequired.accepts.every(
+          (option) => option.network !== PAYMENT_NETWORK,
+        )
+      ) {
+        setStatus("This payment is not available on Base Sepolia.");
+        return;
+      }
+
+      const signer: ClientEvmSigner = {
+        address: getAddress(address),
+        signTypedData: async (typedData) =>
+          walletClient.signTypedData({
+            account: getAddress(address),
+            ...typedData,
+          } as Parameters<typeof walletClient.signTypedData>[0]),
+      };
+      const coreClient = new x402Client()
+        .setSpendControls({ maxAmountPerPayment: "$0.10" })
+        .register(PAYMENT_NETWORK, new ExactEvmScheme(signer));
+      const x402 = new x402HTTPClient(coreClient);
+      const payload = await x402.createPaymentPayload(
+        requirements.paymentRequired,
+      );
+
       const settle = await fetch(`${AGENTS}/pay/x402/settle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: requirements.nonce, payload }),
       });
       if (!settle.ok) {
-        setStatus(`DeFiCat could not verify that, ${NEW_LINK}`);
+        const detail = await settle
+          .json()
+          .then((body: unknown) =>
+            typeof body === "object" &&
+            body !== null &&
+            "message" in body &&
+            typeof body.message === "string"
+              ? body.message
+              : undefined,
+          )
+          .catch(() => undefined);
+        setStatus(detail ?? `DeFiCat could not verify that, ${NEW_LINK}`);
         return;
       }
       setPaid(true);
       setStatus("Paid. Head back to Telegram — DeFiCat is running the job.");
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "The wallet could not create the payment.",
+      );
     } finally {
       setBusy(false);
     }
@@ -79,7 +136,7 @@ function PayForm() {
         ) : (
           <button
             type="button"
-            disabled={mounted ? busy || paid : undefined}
+            disabled={busy || paid}
             onClick={() => {
               if (!isConnected) {
                 const c = connectors[0];

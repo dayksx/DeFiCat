@@ -38,6 +38,7 @@ import {
   ETHEREUM_NETWORK,
 } from './EnsCoreModule.js';
 import { SiweBindPolicy } from '../domain/identity/SiweBindPolicy.js';
+import { EthereumAddress } from '../domain/identity/EthereumAddress.js';
 import { CLOCK_PORT, type ClockPort } from '../app/ports/clock/ClockPort.js';
 import {
   IDENTITY_STORE_PORT,
@@ -252,25 +253,37 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
       provide: PaymentPolicy,
       useFactory: (config: ConfigService) => {
         const minutes = config.get<string>('X402_SESSION_TTL_MINUTES');
-        return new PaymentPolicy(
-          minutes === undefined
-            ? PAYMENT_SESSION_TTL_MS
-            : Number(minutes) * 60_000,
-        );
+        if (minutes === undefined) {
+          return new PaymentPolicy(PAYMENT_SESSION_TTL_MS);
+        }
+        const ttlMinutes = Number(minutes);
+        if (!Number.isFinite(ttlMinutes) || ttlMinutes <= 0) {
+          throw new Error('X402_SESSION_TTL_MINUTES must be positive');
+        }
+        return new PaymentPolicy(ttlMinutes * 60_000);
       },
       inject: [ConfigService],
     },
     {
       provide: PAYMENT_ISSUANCE,
-      useFactory: (config: ConfigService): PaymentIssuance => ({
-        payTo: config.getOrThrow<string>('X402_PAY_TO'),
-        chainId: Number(config.getOrThrow<string>('PAYMENT_CHAIN_ID')),
-        asset: config.getOrThrow<string>('X402_USDC_ADDRESS'),
-        network: `eip155:${config.getOrThrow<string>('PAYMENT_CHAIN_ID')}`,
-        uiOrigin: config.getOrThrow<string>('UI_ORIGIN'),
-        extraName: 'USDC',
-        extraVersion: '2',
-      }),
+      useFactory: (config: ConfigService): PaymentIssuance => {
+        const chainId = Number(config.getOrThrow<string>('PAYMENT_CHAIN_ID'));
+        if (!Number.isInteger(chainId) || chainId <= 0) {
+          throw new Error('PAYMENT_CHAIN_ID must be a positive integer');
+        }
+        return {
+          payTo: EthereumAddress.of(config.getOrThrow<string>('X402_PAY_TO'))
+            .value,
+          chainId,
+          asset: EthereumAddress.of(
+            config.getOrThrow<string>('X402_USDC_ADDRESS'),
+          ).value,
+          network: `eip155:${chainId}`,
+          uiOrigin: config.getOrThrow<string>('UI_ORIGIN'),
+          extraName: 'USDC',
+          extraVersion: '2',
+        };
+      },
       inject: [ConfigService],
     },
     {
@@ -292,7 +305,12 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
         issuance: PaymentIssuance,
       ) =>
         new IssuePaymentSession(
-          identities, payments, tokens, clock, policy, issuance,
+          identities,
+          payments,
+          tokens,
+          clock,
+          policy,
+          issuance,
         ),
       inject: [
         IDENTITY_STORE_PORT,
@@ -334,7 +352,13 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
         fulfill: FulfillPaidIntent,
       ) =>
         new SettlePaymentAndFulfill(
-          payments, facilitator, clock, policy, messaging, getRequirements, fulfill,
+          payments,
+          facilitator,
+          clock,
+          policy,
+          messaging,
+          getRequirements,
+          fulfill,
         ),
       inject: [
         PAYMENT_STORE_PORT,
@@ -401,11 +425,7 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
         scheduler: EnsWatchSchedulerPort,
         chatIds: ReadonlySet<string>,
       ) => new CancelEnsWatch(policy, scheduler, chatIds),
-      inject: [
-        EnsPurchasePolicy,
-        ENS_WATCH_SCHEDULER_PORT,
-        ENS_BUYER_CHAT_IDS,
-      ],
+      inject: [EnsPurchasePolicy, ENS_WATCH_SCHEDULER_PORT, ENS_BUYER_CHAT_IDS],
     },
     // Use case watch : rendre compte, en ne montrant que les watchs du chat.
     {

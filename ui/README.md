@@ -23,7 +23,7 @@ Pricing, allowlists, and registration live in [`agents/`](../agents/README.md).
 | --- | --- | --- |
 | `/` | Landing: go chat on Telegram to get a sign-in or pay link | ✅ |
 | `/siwe?token=…` | Connect wallet, sign EIP-4361, POST verify to the agent | ✅ |
-| `/pay?token=…` | Complete x402 for `ens.buy.now` (1 USDC) or `ens.watch.arm` (10 USDC) | in progress |
+| `/pay?token=…` | Complete x402 v2 for `ens.buy.now` (0.01 USDC) or `ens.watch.arm` (0.1 USDC) | ✅ |
 
 Wagmi lives in `lib/wagmi.ts` (`ssr: true`, injected connector). Providers wrap the tree in `src/app/layout.tsx`.
 
@@ -51,9 +51,10 @@ Also start the agent (`cd agents && pnpm run start:dev`) until logs show both `N
 ```bash
 NEXT_PUBLIC_AGENTS_URL=http://localhost:3000
 NEXT_PUBLIC_CHAIN_ID=1
+NEXT_PUBLIC_PAYMENT_CHAIN_ID=84532
 ```
 
-`NEXT_PUBLIC_CHAIN_ID` must match agents `CHAIN_ID` (`1` mainnet, `11155111` Sepolia) for SIWE. x402 settlement uses **Base Sepolia USDC** on the agent side; the UI only posts the payment payload to the agents API.
+`NEXT_PUBLIC_CHAIN_ID` must match agents `CHAIN_ID` (`1` mainnet, `11155111` Sepolia) for SIWE. `NEXT_PUBLIC_PAYMENT_CHAIN_ID=84532` selects Base Sepolia for x402. The UI uses `@x402/core` + `@x402/evm` to sign an EIP-3009 USDC authorization; the agent sends it to the facilitator for settlement.
 
 The SIWE **domain**, **statement**, and timestamps still come from `GET {AGENTS}/auth/siwe/challenge?token=` and must match `SIWE_DOMAIN` / `UI_ORIGIN` on the agent (no scheme on `SIWE_DOMAIN`).
 

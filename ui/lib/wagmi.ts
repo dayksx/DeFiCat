@@ -17,13 +17,22 @@ function ensChain(): Chain {
 }
 
 const ens = ensChain();
+const paymentChainId = Number(
+  process.env.NEXT_PUBLIC_PAYMENT_CHAIN_ID ?? baseSepolia.id,
+);
+if (paymentChainId !== baseSepolia.id) {
+  throw new Error(
+    `Unsupported NEXT_PUBLIC_PAYMENT_CHAIN_ID=${paymentChainId}`,
+  );
+}
+export const paymentChain = baseSepolia;
 
 export const wagmiConfig = createConfig({
-  chains: [ens, baseSepolia],
+  chains: [ens, paymentChain],
   connectors: [injected()],
   ssr: true,
   transports: {
     [ens.id]: http(),
-    [baseSepolia.id]: http(),
+    [paymentChain.id]: http(),
   },
 });

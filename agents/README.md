@@ -24,8 +24,8 @@ Nest (`bootstrap/`) wires adapters. `@nestjs/*` does not enter `domain/` or `app
 
 | SKU | Price | After payment |
 | --- | --- | --- |
-| `ens.buy.now` | 1 USDC | Run `purchase_ens` (available 2LD `.eth`) |
-| `ens.watch.arm` | 10 USDC | Arm Temporal watch (taken / over budget) |
+| `ens.buy.now` | 0.01 USDC | Run `purchase_ens` (available 2LD `.eth`) |
+| `ens.watch.arm` | 0.1 USDC | Arm Temporal watch (taken / over budget) |
 
 `lookup_ens`, quotes, and `list_ens_watches` stay free. DeFi SKUs are a later wave, not this demo.
 
