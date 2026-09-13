@@ -53,18 +53,23 @@ const TRANSFERS_BY_DOMAIN = `
   }
 `;
 
-/** `account(id:)` takes an ID, the domain filter takes a String: two variables. */
+/**
+ * A wrapped name has the NameWrapper as `owner` and the real holder as
+ * `wrappedOwner`, and a transferred controller leaves the holder only on
+ * `registrant`, so owner alone misses names the address actually holds.
+ */
 const ACCOUNT_DOMAINS = `
-  query AccountDomains($id: ID!, $address: String!, $first: Int!) {
-    account(id: $id) {
-      domains(first: $first) {
-        ${DOMAIN_FIELDS}
-      }
+  query AccountDomains($address: String!, $first: Int!) {
+    owned: domains(where: { owner: $address }, first: $first) {
+      ${DOMAIN_FIELDS}
     }
-    resolved: domains(
-      where: { resolvedAddress: $address }
-      first: $first
-    ) {
+    wrapped: domains(where: { wrappedOwner: $address }, first: $first) {
+      ${DOMAIN_FIELDS}
+    }
+    registered: domains(where: { registrant: $address }, first: $first) {
+      ${DOMAIN_FIELDS}
+    }
+    resolved: domains(where: { resolvedAddress: $address }, first: $first) {
       ${DOMAIN_FIELDS}
     }
   }
@@ -152,16 +157,22 @@ export class TheGraphEnsAdapter implements EnsLookupPort {
     rawAddress: string,
     limit: number,
   ): Promise<EnsLookupResult> {
-    const id = rawAddress.trim().toLowerCase();
+    const address = rawAddress.trim().toLowerCase();
     const first = Math.min(Math.max(limit, 1), 20);
     const data = await this.request<{
-      account: { domains: GraphDomain[] } | null;
+      owned: GraphDomain[];
+      wrapped: GraphDomain[];
+      registered: GraphDomain[];
       resolved: GraphDomain[];
-    }>(ACCOUNT_DOMAINS, { id, address: id, first });
-    const owned = data.account?.domains ?? [];
-    const resolved = data.resolved ?? [];
+    }>(ACCOUNT_DOMAINS, { address, first });
+    const all = [
+      ...(data.owned ?? []),
+      ...(data.wrapped ?? []),
+      ...(data.registered ?? []),
+      ...(data.resolved ?? []),
+    ];
     return {
-      domains: dedupeDomains([...owned, ...resolved].map(mapDomain)),
+      domains: dedupeDomains(all.map(mapDomain)).slice(0, first),
       transfers: [],
     };
   }

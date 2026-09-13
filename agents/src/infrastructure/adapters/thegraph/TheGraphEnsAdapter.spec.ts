@@ -126,26 +126,35 @@ describe("TheGraphEnsAdapter", () => {
     });
   });
 
-  it("merges owned and reverse-resolved domains for an address", async () => {
+  it("merges owned, wrapped, registered and reverse-resolved domains for an address", async () => {
     const graph = new FakeGraph();
     graph.responses.push({
-      account: {
-        domains: [
-          {
-            name: "alice.eth",
-            labelName: "alice",
-            labelhash: "0x1",
-            owner: { id: "0xabc" },
-          },
-        ],
-      },
-      resolved: [
+      owned: [
         {
           name: "alice.eth",
           labelName: "alice",
           labelhash: "0x1",
           owner: { id: "0xabc" },
         },
+      ],
+      wrapped: [
+        {
+          name: "kikoulol.eth",
+          labelName: "kikoulol",
+          labelhash: "0x3",
+          owner: { id: "0xd4416b13d2b3a9abae7acd5d6c2bbdbe25686401" },
+          wrappedOwner: { id: "0xabc" },
+        },
+      ],
+      registered: [
+        {
+          name: "alice.eth",
+          labelName: "alice",
+          labelhash: "0x1",
+          registrant: { id: "0xabc" },
+        },
+      ],
+      resolved: [
         {
           name: "alice.wallet.eth",
           labelName: "alice",
@@ -163,12 +172,12 @@ describe("TheGraphEnsAdapter", () => {
     });
 
     expect(graph.calls[0]?.variables).toEqual({
-      id: "0xabc",
       address: "0xabc",
       first: 5,
     });
     expect(result.domains.map((d) => d.name)).toEqual([
       "alice.eth",
+      "kikoulol.eth",
       "alice.wallet.eth",
     ]);
     expect(result.transfers).toEqual([]);
