@@ -15,8 +15,10 @@ import type {
 import type { EnsLookupPort } from '../../../app/ports/graph/EnsLookupPort.js';
 import type { IssuePaymentSession } from '../../../app/use-cases/Billing/IssuePaymentSession.js';
 import type { PurchaseEnsName } from '../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
+import type { CreateEnsSubname } from '../../../app/use-cases/CreateEnsSubname/CreateEnsSubname.js';
 import { createEnsLookupTool } from './tools/createEnsLookupTool.js';
 import { createEnsPurchaseTool } from './tools/createEnsPurchaseTool.js';
+import { createEnsSubnameTool } from './tools/createEnsSubnameTool.js';
 import { createEnsWatchTools } from './tools/createEnsWatchTools.js';
 import {
   createIsoZoneFormatter,
@@ -83,6 +85,7 @@ export class LangGraphConversationAdapter implements ConversationPort {
     systemPrompt: string;
     ensLookup: EnsLookupPort;
     purchaseEnsName: PurchaseEnsName;
+    createEnsSubname: CreateEnsSubname;
     issuePayment: IssuePaymentSession;
     cancelEnsWatch: CancelEnsWatch;
     listEnsWatches: ListEnsWatches;
@@ -116,6 +119,12 @@ export class LangGraphConversationAdapter implements ConversationPort {
       allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,
       networkLabel: opts.networkLabel,
     });
+    const purchaseEnsSubname = createEnsSubnameTool({
+      createEnsSubname: opts.createEnsSubname,
+      issuePayment: opts.issuePayment,
+      allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,
+      networkLabel: opts.networkLabel,
+    });
     const watchTools = createEnsWatchTools({
       purchaseEnsName: opts.purchaseEnsName,
       issuePayment: opts.issuePayment,
@@ -124,7 +133,13 @@ export class LangGraphConversationAdapter implements ConversationPort {
       allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,
       toLocalIso,
     });
-    const tools = [search, lookupEns, purchaseEns, ...watchTools];
+    const tools = [
+      search,
+      lookupEns,
+      purchaseEns,
+      purchaseEnsSubname,
+      ...watchTools,
+    ];
     const graph = compileConversationGraph({
       modelWithTools: model.bindTools(tools),
       tools: new ToolNode(tools),

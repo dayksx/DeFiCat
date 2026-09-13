@@ -22,6 +22,7 @@ import {
 } from '../app/ports/watch/EnsWatchSchedulerPort.js';
 import { EnsPurchasePolicy } from '../domain/ens/EnsPurchasePolicy.js';
 import { PurchaseEnsName } from '../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
+import { CreateEnsSubname } from '../app/use-cases/CreateEnsSubname/CreateEnsSubname.js';
 import { ScheduleEnsPurchase } from '../app/use-cases/EnsWatch/ScheduleEnsPurchase.js';
 import { CancelEnsWatch } from '../app/use-cases/EnsWatch/CancelEnsWatch.js';
 import { ListEnsWatches } from '../app/use-cases/EnsWatch/ListEnsWatches.js';
@@ -107,8 +108,9 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
             'You are DeFiChat, a helpful DeFi assistant.',
             `You operate on ${network.label} (chain id ${network.chainId}). ENS lookups and purchases use that chain only.`,
             'The user signed in with Ethereum (SIWE) before this chat. Every turn includes a verified wallet address and link time — treat that as ground truth. If they ask who they are, their address, or when they connected, answer from it. Never invent or change the address.',
-            'For ENS data use lookup_ens. For ENS availability, quotes, and purchases use purchase_ens. Always quote first and never claim a purchase succeeded unless purchase_ens returns purchased=true.',
+            'For ENS data use lookup_ens. For second-level ENS availability, quotes, and purchases use purchase_ens. For subnames such as me.kikoulol.eth use purchase_ens_subname. Always check or quote first and never claim a write succeeded from a payment link.',
             'When a quote comes back with schedulable=true, meaning the name is taken or above budget, offer schedule_ens so the name is bought automatically once it drops within budget. Never offer schedule_ens for a name that is already available within budget: buy it instead.',
+            'Never write a CONFIRM phrase yourself. Quote it verbatim from confirmationRequired or watchConfirmationRequired in the tool result, and ask for that one only. If neither field is present, ask for no confirmation at all.',
             'Paid actions return PAYMENT_REQUIRED with payUrl. Never invent a tx hash. Never ask CONFIRM again after they paid.',
             'Use list_ens_watches whenever the user asks what is scheduled, watched or pending, and cancel_ens_watch to stop one. Report the statuses exactly as the tools return them.',
             'Use web search for news and prices.',
@@ -124,6 +126,7 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
         agent: Agent,
         ensLookup: EnsLookupPort,
         purchaseEnsName: PurchaseEnsName,
+        createEnsSubname: CreateEnsSubname,
         ensBuyerChatIds: ReadonlySet<string>,
         cancelEnsWatch: CancelEnsWatch,
         listEnsWatches: ListEnsWatches,
@@ -138,6 +141,7 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
           systemPrompt: agent.persona,
           ensLookup,
           purchaseEnsName,
+          createEnsSubname,
           issuePayment,
           cancelEnsWatch,
           listEnsWatches,
@@ -152,6 +156,7 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
         Agent,
         ENS_LOOKUP_PORT,
         PurchaseEnsName,
+        CreateEnsSubname,
         ENS_BUYER_CHAT_IDS,
         CancelEnsWatch,
         ListEnsWatches,
@@ -335,10 +340,25 @@ const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
       provide: FulfillPaidIntent,
       useFactory: (
         purchase: PurchaseEnsName,
+        createSubname: CreateEnsSubname,
         schedule: ScheduleEnsPurchase,
         messaging: OutboundMessagingPort,
-      ) => new FulfillPaidIntent(purchase, schedule, messaging),
-      inject: [PurchaseEnsName, ScheduleEnsPurchase, MESSAGING_PORT],
+        network: EthereumNetwork,
+      ) =>
+        new FulfillPaidIntent(
+          purchase,
+          createSubname,
+          schedule,
+          messaging,
+          network.chainId,
+        ),
+      inject: [
+        PurchaseEnsName,
+        CreateEnsSubname,
+        ScheduleEnsPurchase,
+        MESSAGING_PORT,
+        ETHEREUM_NETWORK,
+      ],
     },
     {
       provide: SettlePaymentAndFulfill,

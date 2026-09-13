@@ -5,12 +5,16 @@ export type EthereumNetwork = {
   chainId: number;
   label: string;
   chain: Chain;
+  ensRegistry: Address;
+  ensNameWrapper: Address;
   ensRegistrarController: Address;
   ensPublicResolver: Address;
   ensSubgraphId: string;
 };
 
 export type EthereumNetworkOverrides = {
+  ensRegistry?: string;
+  ensNameWrapper?: string;
   ensRegistrarController?: string;
   ensPublicResolver?: string;
   ensSubgraphId?: string;
@@ -29,24 +33,24 @@ const PRESETS: Record<number, EthereumNetwork> = {
     chainId: mainnet.id,
     label: 'Ethereum mainnet',
     chain: mainnet,
+    ensRegistry: getAddress('0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e'),
+    ensNameWrapper: getAddress('0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401'),
     ensRegistrarController: getAddress(
       '0x253553366Da8546fC250F225fe3d25d0C782303b',
     ),
-    ensPublicResolver: getAddress(
-      '0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63',
-    ),
+    ensPublicResolver: getAddress('0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63'),
     ensSubgraphId: '5XqPmWe6gjyrJtFn9cLy237i4cWw2j9HcUJEXsP5qGtH',
   },
   [sepolia.id]: {
     chainId: sepolia.id,
     label: 'Ethereum Sepolia',
     chain: sepolia,
+    ensRegistry: getAddress('0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e'),
+    ensNameWrapper: getAddress('0x0635513f179D50A207757E05759CbD106d7dFcE8'),
     ensRegistrarController: getAddress(
       '0xFED6a969AaA60E4961FCD3EBF1A2e8913ac65B72',
     ),
-    ensPublicResolver: getAddress(
-      '0x8FADE66B79cC9f707aB26799354482EB93a5B7dD',
-    ),
+    ensPublicResolver: getAddress('0x8FADE66B79cC9f707aB26799354482EB93a5B7dD'),
     ensSubgraphId: 'DmMXLtMZnGbQXASJ7p1jfzLUbBYnYUD9zNBTxpkjHYXV',
   },
 };
@@ -77,6 +81,11 @@ export function resolveEthereumNetwork(
   }
   return {
     ...preset,
+    ensRegistry: optionalAddress(overrides.ensRegistry, preset.ensRegistry),
+    ensNameWrapper: optionalAddress(
+      overrides.ensNameWrapper,
+      preset.ensNameWrapper,
+    ),
     ensRegistrarController: optionalAddress(
       overrides.ensRegistrarController,
       preset.ensRegistrarController,
@@ -85,8 +94,7 @@ export function resolveEthereumNetwork(
       overrides.ensPublicResolver,
       preset.ensPublicResolver,
     ),
-    ensSubgraphId:
-      overrides.ensSubgraphId?.trim() || preset.ensSubgraphId,
+    ensSubgraphId: overrides.ensSubgraphId?.trim() || preset.ensSubgraphId,
   };
 }
 

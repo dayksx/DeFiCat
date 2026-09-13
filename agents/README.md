@@ -23,13 +23,14 @@ Nest (`bootstrap/`) wires adapters. `@nestjs/*` does not enter `domain/` or `app
 **v1 catalogue**
 
 | SKU | Price | After payment |
-| --- | --- | --- |
+| -------------------- | --------- | -------------------------------------------------------------- |
 | `ens.buy.now` | 0.01 USDC | Run `purchase_ens` (available 2LD `.eth`) |
+| `ens.subname.create` | 0.01 USDC | Run `purchase_ens_subname` under an agent-owned wrapped parent |
 | `ens.watch.arm` | 0.1 USDC | Arm Temporal watch (taken / over budget) |
 
 `lookup_ens`, quotes, and `list_ens_watches` stay free. DeFi SKUs are a later wave, not this demo.
 
-Names in the pitch: **2LD** `kikoulol.eth` (buy/watch) and **subnames** `degen.kikoulol.eth` (lookup today; registration next).
+Names in the pitch: **2LD** `kikoulol.eth` (buy/watch) and **subnames** `degen.kikoulol.eth` (lookup/create).
 
 ## ⚠️ Two processes, not one
 
@@ -51,13 +52,13 @@ The bot only **arms and cancels** watches. The purchase itself is signed later b
 ## ✨ Features
 
 | Surface | What it does | Status |
-| --- | --- | --- |
+| ---------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------- |
 | 💬 Telegram bot | LangGraph, ENS tools, web search | ✅ |
 | 📊 ENS insights | Owner, expiry, grace via [The Graph](https://thegraph.com) — 2LD and subnames | ✅ `lookup_ens` |
 | 🛒 Buy now | Quote then commit/reveal, allowlist + budget cap | ✅ `purchase_ens` |
 | ⏳ Schedule buy | Buy a taken 2LD the moment it drops, within budget | ✅ `schedule_ens`, `list_ens_watches`, `cancel_ens_watch` |
 | 💳 x402 | 402 + settle, then auto-run buy or arm watch | in progress |
-| 🧩 Subname mint | Register `degen.kikoulol.eth`-style names | next |
+| 🧩 Subname mint | Create `degen.kikoulol.eth` under an agent-owned wrapped parent | ✅ `purchase_ens_subname` |
 | 🔄 DeFi services | Same payment rails, different SKUs | **not this demo** |
 | 🤝 A2A | Other agents, same paid ENS services | later |
 | ❤️ HTTP health | `PORT`, default 3000 | ✅ |
@@ -104,7 +105,7 @@ src/
 Copy [`.env.example`](./.env.example) to `.env`. Names only — fill values locally, never commit secrets.
 
 | Variable | Purpose |
-| --- | --- |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PORT` | HTTP listen port (default `3000`) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot |
 | `TELEGRAM_HANDLER_TIMEOUT_MS` | Max time one update may run (default `900000`). Must exceed an ENS buy (~2 min) |
@@ -120,7 +121,7 @@ Copy [`.env.example`](./.env.example) to `.env`. Names only — fill values loca
 ENS purchases spend real funds:
 
 | Variable | Purpose |
-| --- | --- |
+| ------------------------------------- | ------------------------------------------------------------------ |
 | `ETHEREUM_RPC_URL` | RPC for `CHAIN_ID` (quotes and transactions) |
 | `ENS_REGISTRAR_CONTROLLER` | Optional override of the preset registrar |
 | `ENS_PUBLIC_RESOLVER` | Optional override of the preset resolver |
@@ -134,14 +135,14 @@ The allowlist is a single provider (`ENS_BUYER_CHAT_IDS`) shared by the purchase
 x402 is a **different chain** from ENS:
 
 | Variable | Purpose |
-| --- | --- |
+| ---------------------- | ---------------------------------------------------- |
 | `X402_PAY_TO` | Treasury (same EOA as `AGENT_PRIVATE_KEY`, checksum) |
 | `X402_FACILITATOR_URL` | Default `https://x402.org/facilitator` |
 
 Scheduled purchases add Temporal. The bot and the worker must agree on the last two:
 
 | Variable | Purpose |
-| --- | --- |
+| ---------------------------------- | ------------------------------------------- |
 | `ENS_WATCH_SCHEDULER` | `memory` (default) or `temporal` |
 | `TEMPORAL_ADDRESS` | Server address (default `127.0.0.1:7233`) |
 | `TEMPORAL_NAMESPACE` | Namespace (default `default`) |
@@ -218,7 +219,7 @@ Set `ENS_WATCH_SCHEDULER=temporal` for real watches. The choice is an env var an
 Temporal is the only source of truth, so there is no second database to keep in sync. The adapter reads it on three levels:
 
 | Channel | Carries | Survives completion |
-| --- | --- | --- |
+| ---------------- | ---------------------------------------------------- | ------------------- |
 | `memo` | label, name, years, budget, requester, drop snapshot | yes |
 | execution status | running, completed, cancelled, failed | yes |
 | workflow query | current phase (`arming`, `committed`, …) | no |
@@ -233,7 +234,7 @@ Because a query only answers on a live execution, a finished watch reports its o
 
 Bot: [t.me/DeFiCat_bot](https://t.me/DeFiCat_bot)
 
-Telegraf launches from `TelegramInboundAdapter.onModuleInit`, so the bot listens as soon as `bot.ts` starts. Only `BotModule` registers that adapter: the worker shares the same Telegraf provider to *send* notifications, and must never register the inbound adapter, or two processes would long-poll the same token.
+Telegraf launches from `TelegramInboundAdapter.onModuleInit`, so the bot listens as soon as `bot.ts` starts. Only `BotModule` registers that adapter: the worker shares the same Telegraf provider to _send_ notifications, and must never register the inbound adapter, or two processes would long-poll the same token.
 
 Ask for ENS data (`lookup_ens`), or a quote and a purchase (`purchase_ens`). A purchase needs the chat to be in `ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS`, an exact confirmation phrase, and a settled x402 payment for `ens.buy.now` (or `ens.watch.arm` for a scheduled buy).
 

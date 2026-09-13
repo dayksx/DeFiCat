@@ -23,7 +23,7 @@ Pricing, allowlists, and registration live in [`agents/`](../agents/README.md).
 | --- | --- | --- |
 | `/` | Landing: go chat on Telegram to get a sign-in or pay link | ✅ |
 | `/siwe?token=…` | Connect wallet, sign EIP-4361, POST verify to the agent | ✅ |
-| `/pay?token=…` | Complete x402 v2 for `ens.buy.now` (0.01 USDC) or `ens.watch.arm` (0.1 USDC) | ✅ |
+| `/pay?token=…` | Complete x402 v2 for `ens.buy.now`, `ens.subname.create` (0.01 USDC), or `ens.watch.arm` (0.1 USDC) | ✅ |
 
 Wagmi lives in `lib/wagmi.ts` (`ssr: true`, injected connector). Providers wrap the tree in `src/app/layout.tsx`.
 

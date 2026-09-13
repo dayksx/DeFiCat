@@ -10,6 +10,11 @@ import { PaymentError } from '../../../../app/use-cases/Billing/PaymentError.js'
 import type { IssuePaymentSession } from '../../../../app/use-cases/Billing/IssuePaymentSession.js';
 import { EnsPurchaseError } from '../../../../app/use-cases/PurchaseEnsName/EnsPurchaseError.js';
 import type { PurchaseEnsName } from '../../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
+import {
+  buyConfirmationPhrase,
+  normalizeConfirmation,
+  watchConfirmationPhrase,
+} from './ensConfirmationPhrases.js';
 import { telegramChatId } from './telegramChatId.js';
 
 type MessagesState = { messages: BaseMessage[] };
@@ -69,11 +74,18 @@ export function createEnsPurchaseTool(opts: {
         return failure(logger, input.action, input.name, error);
       }
 
-      const confirmation = confirmationPhrase(valid.name, valid.years);
+      const confirmation = buyConfirmationPhrase(valid.name, valid.years);
 
       if (input.action === 'quote') {
         try {
           const quote = await opts.purchaseEnsName.quote(valid);
+          // Porté par le résultat d'outil plutôt que laissé à l'initiative du
+          // modèle : c'est la seule condition où un watch a du sens.
+          const schedulable = !quote.available || !quote.withinBudget;
+          const watchConfirmation = watchConfirmationPhrase(
+            valid.name,
+            valid.years,
+          );
           return JSON.stringify({
             action: 'quote',
             purchased: false,
@@ -84,11 +96,14 @@ export function createEnsPurchaseTool(opts: {
             maximumSentEth: formatEther(BigInt(quote.valueWithSlippageWei)),
             budgetEth: formatEther(BigInt(quote.maxBudgetWei)),
             withinBudget: quote.withinBudget,
-            confirmationRequired: confirmation,
-            // Porté par le résultat d'outil plutôt que laissé à l'initiative du
-            // modèle : c'est la seule condition où un watch a du sens.
-            schedulable: !quote.available || !quote.withinBudget,
-            message: quoteMessage(quote, confirmation),
+            // Only ever one phrase, and only the one that can succeed now:
+            // offering the buy phrase for a taken name made the model make up
+            // a shorter watch phrase that schedule_ens then rejected.
+            ...(schedulable
+              ? { watchConfirmationRequired: watchConfirmation }
+              : { confirmationRequired: confirmation }),
+            schedulable,
+            message: quoteMessage(quote, confirmation, watchConfirmation),
           });
         } catch (error) {
           return failure(logger, 'quote', valid.name, error);
@@ -129,6 +144,10 @@ export function createEnsPurchaseTool(opts: {
         return failure(logger, 'buy', valid.name, error);
       }
       if (!quote.available || !quote.withinBudget) {
+        const watchConfirmation = watchConfirmationPhrase(
+          valid.name,
+          valid.years,
+        );
         return JSON.stringify({
           action: 'buy',
           purchased: false,
@@ -136,7 +155,8 @@ export function createEnsPurchaseTool(opts: {
           available: quote.available,
           withinBudget: quote.withinBudget,
           schedulable: true,
-          message: quoteMessage(quote, confirmation),
+          watchConfirmationRequired: watchConfirmation,
+          message: quoteMessage(quote, confirmation, watchConfirmation),
         });
       }
 
@@ -178,12 +198,13 @@ export function createEnsPurchaseTool(opts: {
 function quoteMessage(
   quote: { name: string; available: boolean; withinBudget: boolean },
   confirmation: string,
+  watchConfirmation: string,
 ): string {
   if (!quote.available) {
-    return `${quote.name} is already registered. Offer to watch it with schedule_ens so it is bought as soon as it drops within budget.`;
+    return `${quote.name} is already registered. Offer to watch it with schedule_ens so it is bought as soon as it drops within budget, and ask the user to send exactly: ${watchConfirmation}`;
   }
   if (!quote.withinBudget) {
-    return `${quote.name} costs more than the agent budget right now. Offer to watch it with schedule_ens: the premium falls over time and the purchase fires once it is affordable.`;
+    return `${quote.name} costs more than the agent budget right now. Offer to watch it with schedule_ens: the premium falls over time and the purchase fires once it is affordable. Ask the user to send exactly: ${watchConfirmation}`;
   }
   return `Ask the user to send exactly: ${confirmation}`;
 }
@@ -218,8 +239,8 @@ function failure(
     });
   }
 
-  // A policy refusal (e.g. the linked wallet is the treasury) already reads as
-  // an instruction: dropping it into UNEXPECTED_ERROR would hide the fix.
+  // A policy refusal already reads as an instruction: dropping it into
+  // UNEXPECTED_ERROR would hide the fix.
   if (error instanceof DomainError) {
     return JSON.stringify({
       action,
@@ -248,10 +269,6 @@ function describe(error: unknown): string {
   return `${error.message} <- ${cause instanceof Error ? cause.message : String(cause)}`;
 }
 
-function confirmationPhrase(name: string, years: number): string {
-  return `CONFIRM BUY ${name.toUpperCase()} FOR ${years} YEAR${years === 1 ? '' : 'S'}`;
-}
-
 export function authorizeEnsPurchase(opts: {
   threadId: unknown;
   latestUserText: string;
@@ -268,7 +285,7 @@ export function authorizeEnsPurchase(opts: {
   }
   if (
     normalizeConfirmation(opts.latestUserText) !==
-    confirmationPhrase(opts.name, opts.years)
+    buyConfirmationPhrase(opts.name, opts.years)
   ) {
     return {
       allowed: false,
@@ -277,10 +294,6 @@ export function authorizeEnsPurchase(opts: {
     };
   }
   return { allowed: true };
-}
-
-function normalizeConfirmation(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
 function latestHumanText(messages: BaseMessage[]): string {

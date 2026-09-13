@@ -1,6 +1,6 @@
 export type OfferKind = 'immediate' | 'scheduled';
 
-export type ServiceSku = 'ens.buy.now' | 'ens.watch.arm';
+export type ServiceSku = 'ens.buy.now' | 'ens.subname.create' | 'ens.watch.arm';
 
 export type ServiceOffer = {
   sku: ServiceSku;
@@ -15,6 +15,12 @@ const OFFERS: Record<ServiceSku, ServiceOffer> = {
     kind: 'immediate',
     amountAtomic: 10_000n,
     label: 'Buy an available .eth now',
+  },
+  'ens.subname.create': {
+    sku: 'ens.subname.create',
+    kind: 'immediate',
+    amountAtomic: 10_000n,
+    label: 'Create a subname under an agent-owned .eth',
   },
   'ens.watch.arm': {
     sku: 'ens.watch.arm',

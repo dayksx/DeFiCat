@@ -7,9 +7,15 @@ import {
   ENS_REGISTRAR_PORT,
   type EnsRegistrarPort,
 } from '../app/ports/ens/EnsRegistrarPort.js';
+import {
+  ENS_SUBNAME_PORT,
+  type EnsSubnamePort,
+} from '../app/ports/ens/EnsSubnamePort.js';
 import { MESSAGING_PORT } from '../app/ports/messaging/OutboundMessagingPort.js';
 import { EnsPurchasePolicy } from '../domain/ens/EnsPurchasePolicy.js';
+import { EnsSubnamePolicy } from '../domain/ens/EnsSubnamePolicy.js';
 import { PurchaseEnsName } from '../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
+import { CreateEnsSubname } from '../app/use-cases/CreateEnsSubname/CreateEnsSubname.js';
 import { TheGraphEnsAdapter } from '../infrastructure/adapters/thegraph/TheGraphEnsAdapter.js';
 import { ViemEnsRegistrarAdapter } from '../infrastructure/adapters/ens/ViemEnsRegistrarAdapter.js';
 import { TelegramOutboundAdapter } from '../infrastructure/adapters/telegram/TelegramOutboundAdapter.js';
@@ -53,10 +59,15 @@ export const ETHEREUM_NETWORK = Symbol('EthereumNetwork');
       useFactory: (config: ConfigService): EthereumNetwork =>
         resolveEthereumNetwork(
           parseChainId(
-            config.get<string>('CHAIN_ID') ?? config.get<string>('SIWE_CHAIN_ID'),
+            config.get<string>('CHAIN_ID') ??
+              config.get<string>('SIWE_CHAIN_ID'),
           ),
           {
-            ensRegistrarController: config.get<string>('ENS_REGISTRAR_CONTROLLER'),
+            ensRegistry: config.get<string>('ENS_REGISTRY'),
+            ensNameWrapper: config.get<string>('ENS_NAME_WRAPPER'),
+            ensRegistrarController: config.get<string>(
+              'ENS_REGISTRAR_CONTROLLER',
+            ),
             ensPublicResolver: config.get<string>('ENS_PUBLIC_RESOLVER'),
             ensSubgraphId: config.get<string>('ENS_SUBGRAPH_ID'),
           },
@@ -81,15 +92,22 @@ export const ETHEREUM_NETWORK = Symbol('EthereumNetwork');
           privateKey: readPrivateKey(config),
           rpcUrl: config.getOrThrow<string>('ETHEREUM_RPC_URL'),
           chain: network.chain,
+          registry: network.ensRegistry,
+          nameWrapper: network.ensNameWrapper,
           registrarController: network.ensRegistrarController,
           publicResolver: network.ensPublicResolver,
         }),
       inject: [ConfigService, ETHEREUM_NETWORK],
     },
     {
+      provide: ENS_SUBNAME_PORT,
+      useExisting: ENS_REGISTRAR_PORT,
+    },
+    {
       provide: EnsPurchasePolicy,
       useValue: new EnsPurchasePolicy(1, 5),
     },
+    { provide: EnsSubnamePolicy, useValue: new EnsSubnamePolicy() },
     // Use case achat immédiat, réutilisé par le worker pour recoter un watch.
     {
       provide: PurchaseEnsName,
@@ -106,6 +124,12 @@ export const ETHEREUM_NETWORK = Symbol('EthereumNetwork');
           ).toString(),
         ),
       inject: [ENS_REGISTRAR_PORT, EnsPurchasePolicy, ConfigService],
+    },
+    {
+      provide: CreateEnsSubname,
+      useFactory: (subnames: EnsSubnamePort, policy: EnsSubnamePolicy) =>
+        new CreateEnsSubname(subnames, policy),
+      inject: [ENS_SUBNAME_PORT, EnsSubnamePolicy],
     },
     // Infra partagée : un seul Telegraf. Le worker s'en sert sans jamais lancer
     // de long polling, `bot.telegram.sendMessage` n'a pas besoin de `launch()`.
@@ -134,8 +158,11 @@ export const ETHEREUM_NETWORK = Symbol('EthereumNetwork');
     ENS_BUYER_CHAT_IDS,
     ENS_LOOKUP_PORT,
     ENS_REGISTRAR_PORT,
+    ENS_SUBNAME_PORT,
     EnsPurchasePolicy,
+    EnsSubnamePolicy,
     PurchaseEnsName,
+    CreateEnsSubname,
     TELEGRAM_BOT,
     MESSAGING_PORT,
   ],

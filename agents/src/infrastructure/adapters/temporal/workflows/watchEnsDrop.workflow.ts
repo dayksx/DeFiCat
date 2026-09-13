@@ -174,7 +174,11 @@ export async function watchEnsDrop(
 
   await notifyActs.notifyChat({
     chatId: input.requesterChatId,
-    message: `Purchased ${input.name} for ${receipt.totalPaidWei} wei, tx ${receipt.registrationTransactionHash}`,
+    message: [
+      `Purchased ${input.name}.`,
+      `https://etherscan.io/tx/${receipt.registrationTransactionHash}`,
+      `https://app.ens.domains/${input.name}`,
+    ].join('\n'),
   });
 
   return 'bought';

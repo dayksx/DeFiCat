@@ -43,6 +43,7 @@ function PayForm() {
   const { switchChainAsync } = useSwitchChain();
   const [busy, setBusy] = useState(false);
   const [paid, setPaid] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   async function onPay() {
     if (!token || !address || !walletClient || busy) return;
@@ -113,7 +114,18 @@ function PayForm() {
         setStatus(detail ?? `DeFiCat could not verify that, ${NEW_LINK}`);
         return;
       }
+      const settled = (await settle.json()) as {
+        txHash?: string;
+        explorerUrl?: string;
+      };
+      const receipt =
+        typeof settled.explorerUrl === "string"
+          ? settled.explorerUrl
+          : typeof settled.txHash === "string"
+            ? `${paymentChain.blockExplorers.default.url}/tx/${settled.txHash}`
+            : null;
       setPaid(true);
+      setReceiptUrl(receipt);
       setStatus("Paid. Head back to Telegram — DeFiCat is running the job.");
     } catch (error) {
       setStatus(
@@ -151,6 +163,16 @@ function PayForm() {
           </button>
         )}
         {status ? <p className="mt-6 text-sm text-zinc-600">{status}</p> : null}
+        {receiptUrl ? (
+          <a
+            href={receiptUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-block text-sm font-semibold text-[#2AABEE] underline"
+          >
+            Open payment receipt
+          </a>
+        ) : null}
       </div>
     </div>
   );

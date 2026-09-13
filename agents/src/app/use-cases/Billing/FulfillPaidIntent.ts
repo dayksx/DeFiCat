@@ -1,18 +1,25 @@
 import { Logger } from "@nestjs/common";
 import { formatEther } from "viem";
 import type { PaidIntent } from "../../../domain/billing/PaidIntent.js";
+import {
+  ensAppUrl,
+  explorerTxUrl,
+} from "../../../domain/billing/PaymentPolicy.js";
 import type { PaymentSession } from "../../../domain/billing/PaymentSession.js";
 import type { OutboundMessagingPort } from "../../ports/messaging/OutboundMessagingPort.js";
 import type { PurchaseEnsName } from "../PurchaseEnsName/PurchaseEnsName.js";
 import type { ScheduleEnsPurchase } from "../EnsWatch/ScheduleEnsPurchase.js";
+import type { CreateEnsSubname } from "../CreateEnsSubname/CreateEnsSubname.js";
 
 export class FulfillPaidIntent {
   private readonly logger = new Logger(FulfillPaidIntent.name);
 
   constructor(
     private readonly purchase: PurchaseEnsName,
+    private readonly createSubname: CreateEnsSubname,
     private readonly schedule: ScheduleEnsPurchase,
     private readonly messaging: OutboundMessagingPort,
+    private readonly ensChainId: number,
   ) {}
 
   public async execute(
@@ -49,12 +56,25 @@ export class FulfillPaidIntent {
         label: intent.label,
         years: intent.years,
       });
-      return [
-        `Registered ${receipt.name}.`,
-        `Owner: ${receipt.owner}`,
-        `Tx: ${receipt.registrationTransactionHash}`,
-        `Paid onchain: ${formatEther(BigInt(receipt.totalPaidWei))} ETH`,
-      ].join("\n");
+      return this.ensMintedMessage({
+        title: `Registered ${receipt.name}.`,
+        name: receipt.name,
+        transactionHash: receipt.registrationTransactionHash,
+        extra: [
+          `Owner: ${receipt.owner}`,
+          `Paid onchain: ${formatEther(BigInt(receipt.totalPaidWei))} ETH`,
+        ],
+      });
+    }
+
+    if (intent.type === "ens.subname") {
+      const receipt = await this.createSubname.execute({ name: intent.name });
+      return this.ensMintedMessage({
+        title: `Created ${receipt.name}.`,
+        name: receipt.name,
+        transactionHash: receipt.transactionHash,
+        extra: [`Owner: ${receipt.owner}`],
+      });
     }
 
     const result = await this.schedule.execute({
@@ -66,5 +86,23 @@ export class FulfillPaidIntent {
       return `${result.quote.name} is available within budget now. Use purchase_ens instead of a watch.`;
     }
     return `Watching ${result.watch.name}. It will be bought automatically once it drops within budget.`;
+  }
+
+  private ensMintedMessage(input: {
+    title: string;
+    name: string;
+    transactionHash: string;
+    extra: string[];
+  }): string {
+    const txUrl =
+      explorerTxUrl(this.ensChainId, input.transactionHash) ??
+      input.transactionHash;
+    return [
+      input.title,
+      ...input.extra,
+      "",
+      txUrl,
+      ensAppUrl(this.ensChainId, input.name),
+    ].join('\n');
   }
 }

@@ -1,4 +1,7 @@
-import type { PaymentPolicy } from '../../../domain/billing/PaymentPolicy.js';
+import {
+  explorerTxUrl,
+  type PaymentPolicy,
+} from '../../../domain/billing/PaymentPolicy.js';
 import type { ClockPort } from '../../ports/clock/ClockPort.js';
 import type { PaymentStorePort } from '../../ports/billing/PaymentStorePort.js';
 import type { X402FacilitatorPort } from '../../ports/billing/X402FacilitatorPort.js';
@@ -11,6 +14,13 @@ import type { GetX402Requirements } from './GetX402Requirements.js';
 export type SettlePaymentInput = {
   token: string;
   payload: PaymentPayload;
+};
+
+export type SettlePaymentResult = {
+  paid: true;
+  fulfilling: true;
+  txHash: string;
+  explorerUrl?: string;
 };
 
 export class SettlePaymentAndFulfill {
@@ -28,7 +38,7 @@ export class SettlePaymentAndFulfill {
 
   public async execute(
     input: SettlePaymentInput,
-  ): Promise<{ paid: true; fulfilling: true }> {
+  ): Promise<SettlePaymentResult> {
     if (this.inFlight.has(input.token)) {
       throw new PaymentError(
         'INVALID_PAYMENT',
@@ -46,7 +56,7 @@ export class SettlePaymentAndFulfill {
 
   private async executeExclusive(
     input: SettlePaymentInput,
-  ): Promise<{ paid: true; fulfilling: true }> {
+  ): Promise<SettlePaymentResult> {
     const session = await this.payments.findSession(input.token);
     if (session === undefined) {
       throw new PaymentError(
@@ -108,10 +118,16 @@ export class SettlePaymentAndFulfill {
     await this.messaging.send({
       channel: consumed.channel,
       recipientId: consumed.recipientId,
-      message: this.policy.paidMessage(consumed),
+      message: this.policy.paidMessage(consumed, txHash),
     });
 
     void this.fulfill.execute(consumed.intent, consumed);
-    return { paid: true, fulfilling: true };
+    const explorerUrl = explorerTxUrl(consumed.chainId, txHash);
+    return {
+      paid: true,
+      fulfilling: true,
+      txHash,
+      ...(explorerUrl !== undefined ? { explorerUrl } : {}),
+    };
   }
 }

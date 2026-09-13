@@ -11,6 +11,10 @@ class FakeEnsChain implements EnsChainDriver {
   price = { base: 100n, premium: 20n };
   commitHash = `0x${'1'.repeat(64)}`;
   registerHash = `0x${'2'.repeat(64)}`;
+  subnameHash = `0x${'4'.repeat(64)}`;
+  parentOwner = this.owner;
+  parentExpiry = 1_900_000_000n;
+  childOwner = '0x0000000000000000000000000000000000000000';
   calls: string[] = [];
 
   async available(): Promise<boolean> {
@@ -46,6 +50,20 @@ class FakeEnsChain implements EnsChainDriver {
   async register(): Promise<string> {
     this.calls.push('register');
     return this.registerHash;
+  }
+
+  async subnameState() {
+    this.calls.push('subnameState');
+    return {
+      parentOwner: this.parentOwner,
+      parentExpiry: this.parentExpiry,
+      childOwner: this.childOwner,
+    };
+  }
+
+  async createSubname(): Promise<string> {
+    this.calls.push('createSubname');
+    return this.subnameHash;
   }
 }
 
@@ -233,6 +251,64 @@ describe('ViemEnsRegistrarAdapter', () => {
       failure: 'REGISTRATION_FAILED',
       commitmentTransactionHash: chain.commitHash,
     });
+  });
+
+  it('creates an available subname under an agent-owned wrapped parent', async () => {
+    const chain = new FakeEnsChain();
+    const adapter = new ViemEnsRegistrarAdapter(chain);
+
+    const quote = await adapter.inspect({
+      name: 'me.kikoulol.eth',
+      label: 'me',
+      parentName: 'kikoulol.eth',
+    });
+    expect(quote).toMatchObject({
+      available: true,
+      parentOwnedByAgent: true,
+      owner: chain.owner,
+    });
+
+    const receipt = await adapter.createSubname({
+      name: 'me.kikoulol.eth',
+      label: 'me',
+      parentName: 'kikoulol.eth',
+    });
+    expect(receipt.transactionHash).toBe(chain.subnameHash);
+    expect(chain.calls).toEqual([
+      'subnameState',
+      'subnameState',
+      'createSubname',
+    ]);
+  });
+
+  it('refuses a subname when the wrapped parent is not agent-owned', async () => {
+    const chain = new FakeEnsChain();
+    chain.parentOwner = '0x0000000000000000000000000000000000000002';
+    const adapter = new ViemEnsRegistrarAdapter(chain);
+
+    await expect(
+      adapter.createSubname({
+        name: 'me.kikoulol.eth',
+        label: 'me',
+        parentName: 'kikoulol.eth',
+      }),
+    ).rejects.toMatchObject({ failure: 'PARENT_NOT_OWNED' });
+    expect(chain.calls).not.toContain('createSubname');
+  });
+
+  it('refuses a subname that already has a registry owner', async () => {
+    const chain = new FakeEnsChain();
+    chain.childOwner = '0x0000000000000000000000000000000000000002';
+    const adapter = new ViemEnsRegistrarAdapter(chain);
+
+    await expect(
+      adapter.createSubname({
+        name: 'me.kikoulol.eth',
+        label: 'me',
+        parentName: 'kikoulol.eth',
+      }),
+    ).rejects.toMatchObject({ failure: 'UNAVAILABLE' });
+    expect(chain.calls).not.toContain('createSubname');
   });
 
   it('reports the name being sniped during the commitment wait', async () => {

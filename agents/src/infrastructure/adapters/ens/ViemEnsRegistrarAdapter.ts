@@ -9,6 +9,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import type { Chain } from 'viem/chains';
+import { namehash } from 'viem/ens';
 import {
   EnsRegistrationError,
   type EnsCommitment,
@@ -20,7 +21,13 @@ import {
   type EnsRegistrationQuote,
   type EnsRegistrationReceipt,
 } from '../../../app/ports/ens/EnsRegistrarPort.js';
-
+import {
+  EnsSubnameRegistrationError,
+  type EnsSubnameInput,
+  type EnsSubnamePort,
+  type EnsSubnameQuote,
+  type EnsSubnameReceipt,
+} from '../../../app/ports/ens/EnsSubnamePort.js';
 
 const ensRegistrarControllerAbi = [
   {
@@ -97,6 +104,45 @@ const ensRegistrarControllerAbi = [
   },
 ] as const;
 
+const ensRegistryAbi = [
+  {
+    type: 'function',
+    name: 'owner',
+    stateMutability: 'view',
+    inputs: [{ name: 'node', type: 'bytes32' }],
+    outputs: [{ name: '', type: 'address' }],
+  },
+] as const;
+
+const ensNameWrapperAbi = [
+  {
+    type: 'function',
+    name: 'getData',
+    stateMutability: 'view',
+    inputs: [{ name: 'id', type: 'uint256' }],
+    outputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'fuses', type: 'uint32' },
+      { name: 'expiry', type: 'uint64' },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'setSubnodeRecord',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'parentNode', type: 'bytes32' },
+      { name: 'label', type: 'string' },
+      { name: 'owner', type: 'address' },
+      { name: 'resolver', type: 'address' },
+      { name: 'ttl', type: 'uint64' },
+      { name: 'fuses', type: 'uint32' },
+      { name: 'expiry', type: 'uint64' },
+    ],
+    outputs: [{ name: 'node', type: 'bytes32' }],
+  },
+] as const;
+
 export type EnsChainDriver = {
   owner: string;
   available(label: string): Promise<boolean>;
@@ -118,9 +164,17 @@ export type EnsChainDriver = {
     secret: Hex;
     value: bigint;
   }): Promise<string>;
+  subnameState(input: EnsSubnameInput): Promise<{
+    parentOwner: string;
+    parentExpiry: bigint;
+    childOwner: string;
+  }>;
+  createSubname(input: EnsSubnameInput & { expiry: bigint }): Promise<string>;
 };
 
-export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
+export class ViemEnsRegistrarAdapter
+  implements EnsRegistrarPort, EnsSubnamePort
+{
   private operation: Promise<void> = Promise.resolve();
 
   constructor(
@@ -132,6 +186,8 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
     privateKey: Hex;
     rpcUrl: string;
     chain: Chain;
+    registry: Address;
+    nameWrapper: Address;
     registrarController: Address;
     publicResolver: Address;
   }): ViemEnsRegistrarAdapter {
@@ -149,6 +205,14 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
     const contract = {
       address: opts.registrarController,
       abi: ensRegistrarControllerAbi,
+    } as const;
+    const registry = {
+      address: opts.registry,
+      abi: ensRegistryAbi,
+    } as const;
+    const nameWrapper = {
+      address: opts.nameWrapper,
+      abi: ensNameWrapperAbi,
     } as const;
 
     const driver: EnsChainDriver = {
@@ -222,6 +286,46 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
         await publicClient.waitForTransactionReceipt({ hash });
         return hash;
       },
+      subnameState: async (input) => {
+        const parentNode = namehash(input.parentName);
+        const childNode = namehash(input.name);
+        const [parentData, childOwner] = await Promise.all([
+          publicClient.readContract({
+            ...nameWrapper,
+            functionName: 'getData',
+            args: [BigInt(parentNode)],
+          }),
+          publicClient.readContract({
+            ...registry,
+            functionName: 'owner',
+            args: [childNode],
+          }),
+        ]);
+        return {
+          parentOwner: parentData[0],
+          parentExpiry: parentData[2],
+          childOwner,
+        };
+      },
+      createSubname: async (input) => {
+        const { request } = await publicClient.simulateContract({
+          ...nameWrapper,
+          account,
+          functionName: 'setSubnodeRecord',
+          args: [
+            namehash(input.parentName),
+            input.label,
+            account.address,
+            opts.publicResolver,
+            0n,
+            0,
+            input.expiry,
+          ],
+        });
+        const hash = await walletClient.writeContract(request);
+        await publicClient.waitForTransactionReceipt({ hash });
+        return hash;
+      },
     };
 
     return new ViemEnsRegistrarAdapter(driver);
@@ -253,6 +357,76 @@ export class ViemEnsRegistrarAdapter implements EnsRegistrarPort {
         error,
       );
     }
+  }
+
+  async inspect(input: EnsSubnameInput): Promise<EnsSubnameQuote> {
+    try {
+      const state = await this.chain.subnameState(input);
+      return {
+        name: input.name,
+        parentName: input.parentName,
+        owner: this.chain.owner,
+        available: isZeroAddress(state.childOwner),
+        parentOwnedByAgent:
+          state.parentOwner.toLowerCase() === this.chain.owner.toLowerCase(),
+        parentExpiry:
+          state.parentExpiry === 0n
+            ? null
+            : new Date(Number(state.parentExpiry) * 1_000),
+      };
+    } catch (error) {
+      throw new EnsSubnameRegistrationError(
+        'CHAIN_UNAVAILABLE',
+        `Could not inspect ${input.name}: ${describeCause(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  async createSubname(input: EnsSubnameInput): Promise<EnsSubnameReceipt> {
+    return this.exclusively(async () => {
+      const quote = await this.inspect(input);
+      if (!quote.parentOwnedByAgent) {
+        throw new EnsSubnameRegistrationError(
+          'PARENT_NOT_OWNED',
+          `The agent does not own the wrapped parent ${input.parentName}`,
+        );
+      }
+      if (!quote.available) {
+        throw new EnsSubnameRegistrationError(
+          'UNAVAILABLE',
+          `${input.name} is already registered`,
+        );
+      }
+      if (quote.parentExpiry === null) {
+        throw new EnsSubnameRegistrationError(
+          'CREATE_FAILED',
+          `${input.parentName} has no usable wrapped expiry`,
+        );
+      }
+
+      try {
+        const expiry = BigInt(Math.floor(quote.parentExpiry.getTime() / 1_000));
+        const transactionHash = await this.chain.createSubname({
+          ...input,
+          expiry,
+        });
+        return {
+          name: input.name,
+          parentName: input.parentName,
+          owner: this.chain.owner,
+          expiry: quote.parentExpiry,
+          transactionHash,
+        };
+      } catch (error) {
+        if (error instanceof EnsSubnameRegistrationError) throw error;
+        throw new EnsSubnameRegistrationError(
+          'CREATE_FAILED',
+          `Could not create ${input.name}: ${describeCause(error)}`,
+          { cause: error },
+        );
+      }
+    });
   }
 
   minCommitmentAgeSeconds(): Promise<number> {
@@ -439,9 +613,13 @@ function wrapError(
   message: string,
   cause: unknown,
 ): EnsRegistrationError {
-  return new EnsRegistrationError(failure, `${message}: ${describeCause(cause)}`, {
-    cause,
-  });
+  return new EnsRegistrationError(
+    failure,
+    `${message}: ${describeCause(cause)}`,
+    {
+      cause,
+    },
+  );
 }
 
 /**
@@ -459,4 +637,8 @@ function describeCause(cause: unknown): string {
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isZeroAddress(address: string): boolean {
+  return /^0x0{40}$/i.test(address);
 }

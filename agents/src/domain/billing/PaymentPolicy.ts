@@ -27,14 +27,6 @@ export class PaymentPolicy {
     const offer = offerFor(sku);
     const payer = EthereumAddress.of(input.payer).value;
     const payTo = EthereumAddress.of(input.payTo).value;
-    // Paying yourself moves no value but still needs the full balance, so the
-    // token reverts on balance instead of naming the real problem: the linked
-    // wallet is the agent treasury.
-    if (payer === payTo) {
-      throw new DomainError(
-        'The linked wallet is the agent treasury. Sign in with a different wallet to pay.',
-      );
-    }
     return {
       nonce: input.nonce,
       channel: input.channel,
@@ -78,7 +70,9 @@ export class PaymentPolicy {
     const action =
       session.intent.type === 'ens.buy'
         ? `buy ${session.intent.label}.eth`
-        : `watch ${session.intent.label}.eth`;
+        : session.intent.type === 'ens.subname'
+          ? `create ${session.intent.name}`
+          : `watch ${session.intent.label}.eth`;
     return [
       `Pay ${usdc} USDC to ${action}.`,
       `This link expires in ${minutes} minutes.`,
@@ -87,10 +81,44 @@ export class PaymentPolicy {
     ].join('\n');
   }
 
-  paidMessage(session: PaymentSession): string {
+  paidMessage(session: PaymentSession, txHash: string): string {
     const usdc = formatUsdc(session.amountAtomic);
-    return `Payment received (${usdc} USDC). Starting the job.`;
+    const explorer = explorerTxUrl(session.chainId, txHash);
+    return [
+      `Payment received (${usdc} USDC). Starting the job.`,
+      '',
+      'Receipt:',
+      explorer ?? txHash,
+    ].join('\n');
   }
+}
+
+/** Known EVM explorers used for payment receipts. Unknown chains fall back to the hash. */
+const EXPLORER_ORIGIN: Record<number, string> = {
+  1: 'https://etherscan.io',
+  11155111: 'https://sepolia.etherscan.io',
+  8453: 'https://basescan.org',
+  84532: 'https://sepolia.basescan.org',
+};
+
+export function explorerTxUrl(
+  chainId: number,
+  txHash: string,
+): string | undefined {
+  const origin = EXPLORER_ORIGIN[chainId];
+  if (origin === undefined) return undefined;
+  return `${origin}/tx/${txHash}`;
+}
+
+const ENS_APP_ORIGIN: Record<number, string> = {
+  1: 'https://app.ens.domains',
+  11155111: 'https://sepolia.app.ens.domains',
+};
+
+/** Manager page for a newly minted name or subname. */
+export function ensAppUrl(chainId: number, name: string): string {
+  const origin = ENS_APP_ORIGIN[chainId] ?? 'https://app.ens.domains';
+  return `${origin}/${name}`;
 }
 
 function formatUsdc(amountAtomic: bigint): string {

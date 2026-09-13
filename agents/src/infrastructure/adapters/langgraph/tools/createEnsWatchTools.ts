@@ -13,6 +13,10 @@ import type { CancelEnsWatch } from '../../../../app/use-cases/EnsWatch/CancelEn
 import type { ListEnsWatches } from '../../../../app/use-cases/EnsWatch/ListEnsWatches.js';
 import type { EnsWatchView } from '../../../../app/ports/watch/EnsWatchSchedulerPort.js';
 import type { IsoZoneFormatter } from '../../../time/createIsoZoneFormatter.js';
+import {
+  normalizeConfirmation,
+  watchConfirmationPhrase,
+} from './ensConfirmationPhrases.js';
 import { telegramChatId } from './telegramChatId.js';
 
 type MessagesState = { messages: BaseMessage[] };
@@ -63,9 +67,10 @@ export function createEnsWatchTools(opts: {
 
       // Un watch dépense sans nouvelle validation humaine le jour venu, donc il
       // demande la même confirmation explicite qu'un achat immédiat.
-      const confirmation = confirmationPhrase(input.name, input.years);
+      const confirmation = watchConfirmationPhrase(input.name, input.years);
       if (
-        normalize(latestHumanText(runtime.state.messages)) !== confirmation
+        normalizeConfirmation(latestHumanText(runtime.state.messages)) !==
+        confirmation
       ) {
         return JSON.stringify({
           action: 'schedule',
@@ -125,7 +130,7 @@ export function createEnsWatchTools(opts: {
     {
       name: 'schedule_ens',
       description:
-        'Invoice a watch for a .eth name that cannot be bought right now. After USDC payment the agent buys it automatically once it drops within budget. Only for names that purchase_ens reported as taken or over budget: never call it for a name that is already available within budget. Requires the exact confirmation phrase. This call returns a payUrl; it does not arm the watch yet.',
+        'Invoice a watch for a .eth name that cannot be bought right now. After USDC payment the agent buys it automatically once it drops within budget. Only for names that purchase_ens reported as taken or over budget: never call it for a name that is already available within budget. Requires the exact watchConfirmationRequired phrase returned by purchase_ens, never a shorter one you wrote yourself. This call returns a payUrl; it does not arm the watch yet.',
       schema: z.object({
         name: z.string().describe('Second-level ENS name, e.g. deficat.eth'),
         years: z.number().int().min(1).max(5).default(1),
@@ -287,15 +292,6 @@ function describe(error: unknown): string {
   const cause = error.cause;
   if (cause === undefined) return error.message;
   return `${error.message} <- ${cause instanceof Error ? cause.message : String(cause)}`;
-}
-
-function confirmationPhrase(name: string, years: number): string {
-  const label = name.trim().toLowerCase().replace(/\.eth$/, '');
-  return `CONFIRM WATCH AND BUY ${label.toUpperCase()}.ETH FOR ${years} YEAR${years === 1 ? '' : 'S'}`;
-}
-
-function normalize(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
 function latestHumanText(messages: BaseMessage[]): string {
