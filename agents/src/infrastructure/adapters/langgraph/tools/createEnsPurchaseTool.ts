@@ -5,6 +5,8 @@ import { tool } from 'langchain';
 import { formatEther } from 'viem';
 import { z } from 'zod';
 import type { ValidatedEnsPurchase } from '../../../../domain/ens/EnsPurchasePolicy.js';
+import { PaymentError } from '../../../../app/use-cases/Billing/PaymentError.js';
+import type { IssuePaymentSession } from '../../../../app/use-cases/Billing/IssuePaymentSession.js';
 import { EnsPurchaseError } from '../../../../app/use-cases/PurchaseEnsName/EnsPurchaseError.js';
 import type { PurchaseEnsName } from '../../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
 import { telegramChatId } from './telegramChatId.js';
@@ -36,12 +38,17 @@ const GUIDANCE: Record<string, string> = {
     'Tell the user the purchase did not go through and that no name was registered.',
   NOT_AUTHORIZED:
     'Tell the user this chat cannot spend agent funds, or ask for the exact confirmation phrase.',
+  PAYMENT_REQUIRED:
+    'Tell the user to open payUrl and pay the quoted USDC. Do not claim the name is bought. The agent will message Telegram after payment.',
+  NOT_LINKED:
+    'Tell the user to sign in with Ethereum before paying. Do not retry the purchase.',
   UNEXPECTED_ERROR:
     'Tell the user the request failed. Never claim the name was purchased.',
 };
 
 export function createEnsPurchaseTool(opts: {
   purchaseEnsName: PurchaseEnsName;
+  issuePayment: IssuePaymentSession;
   allowedTelegramChatIds: ReadonlySet<string>;
   networkLabel?: string;
 }) {
@@ -87,8 +94,9 @@ export function createEnsPurchaseTool(opts: {
         }
       }
 
-      // Authorize before touching the chain so an unauthorized chat cannot even
-      // probe the registrar, and gets the real reason rather than an RPC error.
+      // Authorize before invoicing so an unauthorized chat cannot mint a pay
+      // link. The ENS commit-reveal runs later, after x402 settlement.
+      const chatId = telegramChatId(runtime.config.configurable?.thread_id);
       const authorization = authorizeEnsPurchase({
         threadId: runtime.config.configurable?.thread_id,
         latestUserText: latestHumanText(runtime.state.messages),
@@ -96,30 +104,63 @@ export function createEnsPurchaseTool(opts: {
         name: valid.name,
         years: valid.years,
       });
-      if (!authorization.allowed) {
-        logger.warn(`Blocked ENS purchase: ${authorization.reason}`);
+      if (!authorization.allowed || chatId === undefined) {
+        logger.warn(
+          `Blocked ENS purchase: ${authorization.allowed ? 'missing chat id' : authorization.reason}`,
+        );
         return JSON.stringify({
           action: 'buy',
           purchased: false,
           code: 'NOT_AUTHORIZED',
           retryable: false,
-          error: authorization.reason,
+          error: authorization.allowed
+            ? 'This Telegram chat is not authorized to spend agent funds'
+            : authorization.reason,
           confirmationRequired: confirmation,
           guidance: GUIDANCE.NOT_AUTHORIZED,
         });
       }
 
-      logger.log(`Starting ENS purchase for ${valid.name} (${valid.years}y)`);
+      let quote;
       try {
-        const receipt = await opts.purchaseEnsName.execute(valid);
-        logger.log(
-          `Purchased ${receipt.name}: ${receipt.registrationTransactionHash}`,
-        );
+        quote = await opts.purchaseEnsName.quote(valid);
+      } catch (error) {
+        return failure(logger, 'buy', valid.name, error);
+      }
+      if (!quote.available || !quote.withinBudget) {
         return JSON.stringify({
           action: 'buy',
-          purchased: true,
-          ...receipt,
-          totalPaidEth: formatEther(BigInt(receipt.totalPaidWei)),
+          purchased: false,
+          name: quote.name,
+          available: quote.available,
+          withinBudget: quote.withinBudget,
+          schedulable: true,
+          message: quoteMessage(quote, confirmation),
+        });
+      }
+
+      logger.log(`Invoicing ENS purchase for ${valid.name} (${valid.years}y)`);
+      try {
+        const invoice = await opts.issuePayment.execute({
+          channel: 'telegram',
+          recipientId: chatId,
+          intent: {
+            type: 'ens.buy',
+            label: valid.label,
+            years: valid.years,
+          },
+        });
+        return JSON.stringify({
+          action: 'buy',
+          purchased: false,
+          code: 'PAYMENT_REQUIRED',
+          sku: invoice.offer.sku,
+          amountUsdc: (
+            Number(invoice.offer.amountAtomic) / 1_000_000
+          ).toString(),
+          payUrl: invoice.payUrl,
+          expiresAt: invoice.expiresAt.toISOString(),
+          guidance: GUIDANCE.PAYMENT_REQUIRED,
         });
       } catch (error) {
         return failure(logger, 'buy', valid.name, error);
@@ -128,7 +169,7 @@ export function createEnsPurchaseTool(opts: {
     {
       name: 'purchase_ens',
       description:
-        `Quote or purchase a second-level .eth name with the agent's own ${networkLabel} EOA. Always call quote first. Call buy only after the authorized user sends the exact confirmation phrase returned by quote. Buying takes about one minute because ENS uses commit-reveal.`,
+        `Quote or invoice a second-level .eth name bought with the agent's own ${networkLabel} EOA. Always call quote first. Call buy only after the authorized user sends the exact confirmation phrase returned by quote. Buy returns a payUrl; the name is registered after USDC payment, not in this call.`,
       schema,
     },
   );
@@ -162,17 +203,18 @@ function failure(
     error instanceof Error ? error.stack : undefined,
   );
 
-  if (error instanceof EnsPurchaseError) {
+  if (error instanceof EnsPurchaseError || error instanceof PaymentError) {
     return JSON.stringify({
       action,
       purchased: false,
       code: error.code,
       retryable: error.retryable,
       error: error.message,
-      ...(error.commitmentTransactionHash === undefined
-        ? {}
-        : { commitmentTransactionHash: error.commitmentTransactionHash }),
-      guidance: GUIDANCE[error.code],
+      ...(error instanceof EnsPurchaseError &&
+      error.commitmentTransactionHash !== undefined
+        ? { commitmentTransactionHash: error.commitmentTransactionHash }
+        : {}),
+      guidance: GUIDANCE[error.code] ?? GUIDANCE.UNEXPECTED_ERROR,
     });
   }
 

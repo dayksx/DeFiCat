@@ -1,28 +1,39 @@
 # 🤖 Agents
 
-NestJS + Node.js + TypeScript. Agents that expose **onchain insights (The Graph)**, **ENS registrations (viem)** and **DeFi operations (1inch)**, and require an **x402 payment** before they run. No pay, no play. 😼
+NestJS + Node.js + TypeScript. Telegram agent for **ETHGlobal Online 2026** (**The Graph** + **ENS** tracks): look up names, **buy now** or **schedule a buy**, after **x402**. No pay, no register. 😼
 
 Product context: [../README.md](../README.md).
 
 ## 🐱 Role in DeFiCat
 
-This process is the composition root for Telegram, A2A, and paid tools. The UI does not contain agent logic; it authenticates wallets and completes payments that this service requested.
+This process is the composition root. Telegram talks; The Graph reads; viem writes ENS; Temporal holds drop watches; x402 gates the two paid SKUs. The UI only binds wallets (SIWE) and completes payment.
 
 ```text
-Telegram / A2A / HTTP
+Telegram / HTTP
         │  driving adapters
         ▼
-   use cases (app/)  →  domain (pricing, eligibility, insights rules)
+   use cases (app/)  →  domain (ENS policy, payment policy)
         │  ports
         ▼
-   x402, The Graph, 1inch, ENS, Temporal, LLM, Telegram API  (infrastructure/)
+   x402, The Graph, ENS (viem), Temporal, LLM, Telegram API
 ```
 
 Nest (`bootstrap/`) wires adapters. `@nestjs/*` does not enter `domain/` or `app/`. See [docs/HEXAGONAL.md](../docs/HEXAGONAL.md).
 
+**v1 catalogue**
+
+| SKU | Price | After payment |
+| --- | --- | --- |
+| `ens.buy.now` | 1 USDC | Run `purchase_ens` (available 2LD `.eth`) |
+| `ens.watch.arm` | 10 USDC | Arm Temporal watch (taken / over budget) |
+
+`lookup_ens`, quotes, and `list_ens_watches` stay free. DeFi SKUs are a later wave, not this demo.
+
+Names in the pitch: **2LD** `kikoulol.eth` (buy/watch) and **subnames** `degen.kikoulol.eth` (lookup today; registration next).
+
 ## ⚠️ Two processes, not one
 
-A scheduled ENS purchase waits for months, so it cannot live in the bot's memory. The package therefore ships **two entrypoints** that share the same adapters through `EnsCoreModule`.
+A scheduled ENS purchase can wait for months, so it cannot live in the bot's memory. The package ships **two entrypoints** that share adapters through `EnsCoreModule`.
 
 ```text
 bootstrap/bot.ts           bootstrap/worker.ts
@@ -35,43 +46,45 @@ bootstrap/bot.ts           bootstrap/worker.ts
               (Temporal server holds the timer)
 ```
 
-The bot only **arms and cancels** watches. The purchase itself is signed months later by the worker. Both processes load `AGENT_PRIVATE_KEY`, but only one signs at a time, so run **a single worker** in production: the two share one EOA, and therefore one nonce.
-
+The bot only **arms and cancels** watches. The purchase itself is signed later by the worker. Both load `AGENT_PRIVATE_KEY`; run **a single worker** in production (one EOA, one nonce).
 
 ## ✨ Features
 
 | Surface | What it does | Status |
 | --- | --- | --- |
-| 💬 Telegram bot | Conversation via LangGraph, ENS tools, web search | ✅ Working |
-| 📊 ENS insights | Owner, expiry and grace-period end via [The Graph](https://thegraph.com) | ✅ Working (`lookup_ens`) |
-| 🛒 ENS purchase | Quote then commit/reveal registration, allowlist + budget capped | ✅ Working (`purchase_ens`) |
-| ⏳ Scheduled ENS purchase | Buy a taken name the moment it drops, within budget | ✅ Working (`schedule_ens`, `list_ens_watches`, `cancel_ens_watch`) |
-| 🤝 A2A | Other agents discover and call the same paid services | Planned |
-| 💳 x402 | Service returns 402 until paid, then runs | Planned |
-| 🔄 DeFi operations | Swaps and related actions via [1inch](https://1inch.io) | Planned |
-| ❤️ HTTP health | Process listens (`PORT`, default 3000) | ✅ Working |
+| 💬 Telegram bot | LangGraph, ENS tools, web search | ✅ |
+| 📊 ENS insights | Owner, expiry, grace via [The Graph](https://thegraph.com) — 2LD and subnames | ✅ `lookup_ens` |
+| 🛒 Buy now | Quote then commit/reveal, allowlist + budget cap | ✅ `purchase_ens` |
+| ⏳ Schedule buy | Buy a taken 2LD the moment it drops, within budget | ✅ `schedule_ens`, `list_ens_watches`, `cancel_ens_watch` |
+| 💳 x402 | 402 + settle, then auto-run buy or arm watch | in progress |
+| 🧩 Subname mint | Register `degen.kikoulol.eth`-style names | next |
+| 🔄 DeFi services | Same payment rails, different SKUs | **not this demo** |
+| 🤝 A2A | Other agents, same paid ENS services | later |
+| ❤️ HTTP health | `PORT`, default 3000 | ✅ |
 
-The agent only offers `schedule_ens` when a quote comes back with `schedulable=true`, meaning the name is taken or above budget. Arming a watch needs the exact confirmation phrase, since the purchase later happens without asking again.
+`schedule_ens` is offered when a quote has `schedulable=true` (taken or above budget). Arming a watch needs the exact confirmation phrase: the later purchase does not ask again.
 
 ## 🏗️ Architecture (this package)
 
 ```text
 src/
-  domain/                    # invariants, value objects — no I/O
+  domain/                    # invariants — no I/O
     ens/                     # EnsPurchasePolicy, EnsDropWatch
+    billing/                 # PaymentPolicy, ServiceCatalog, sessions
   app/
-    ports/                   # conversation, ens, graph, messaging, watch
+    ports/                   # conversation, ens, graph, messaging, watch, billing
     use-cases/               # HandleIncomingMessage, PurchaseEnsName,
-                             #   EnsWatch (schedule, list, cancel)
+                             #   EnsWatch, Billing (issue / settle / fulfill)
   infrastructure/adapters/
-    telegram/ langgraph/     # driving + driven chat adapters
-    thegraph/ ens/           # ENS reads (The Graph) and writes (viem)
-    temporal/                # workflow, activities contract, scheduler adapter
-    watch/                   # in-memory scheduler, for dev and tests
+    telegram/ langgraph/
+    thegraph/ ens/           # reads (The Graph) and writes (viem)
+    temporal/                # workflow, activities, scheduler
+    x402/ http/              # facilitator + /pay/x402
+    watch/                   # in-memory scheduler (dev / tests)
   bootstrap/
-    EnsCoreModule.ts         # shared by both processes
-    BotModule.ts  bot.ts     # bot process
-    WorkerModule.ts worker.ts# Temporal worker process
+    EnsCoreModule.ts
+    BotModule.ts  bot.ts
+    WorkerModule.ts worker.ts
 ```
 
 ## ✅ Prerequisites
@@ -80,10 +93,10 @@ src/
 - pnpm (this package pins `packageManager` in `package.json`)
 - Telegram bot token (BotFather)
 - The Graph API key — [thegraph.com/studio/apikeys](https://thegraph.com/studio/apikeys/)
-- An Ethereum RPC URL for **the same chain as `CHAIN_ID`** (mainnet by default), and a **dedicated low-balance EOA** for ENS purchases
-- [Temporal CLI](https://docs.temporal.io/cli) for scheduled purchases (dev server)
-- LLM / search keys for the reasoning layer
-- 1inch credentials and x402 configuration when those land
+- Ethereum RPC for **the same chain as `CHAIN_ID`** (mainnet by default) and a **dedicated low-balance EOA** for ENS purchases
+- [Temporal CLI](https://docs.temporal.io/cli) for scheduled purchases
+- LLM / search keys
+- x402: USDC on Base Sepolia + facilitator URL
 - Optional: a public URL (e.g. ngrok) if Telegram uses webhooks
 
 ## 🔐 Environment
@@ -102,9 +115,9 @@ Copy [`.env.example`](./.env.example) to `.env`. Names only — fill values loca
 | `CHAIN_ID` | `1` mainnet (default). SIWE + ENS follow this. Sepolia (`11155111`) can look up and quote but **cannot register**: ENS revoked its v1 controllers there |
 | `THEGRAPH_API_KEY` | ENS subgraph reads |
 | `AGENT_TIMEZONE` | IANA zone the agent reports dates in (default: host zone) |
-| 1inch / x402 vars | Add to `.env.example` when implemented |
+| `UI_ORIGIN` / `SIWE_DOMAIN` | Wallet bind UI |
 
-ENS purchases spend real funds, so these four are the ones to get right:
+ENS purchases spend real funds:
 
 | Variable | Purpose |
 | --- | --- |
@@ -117,6 +130,13 @@ ENS purchases spend real funds, so these four are the ones to get right:
 | `ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS` | Comma-separated chat IDs allowed to spend those funds |
 
 The allowlist is a single provider (`ENS_BUYER_CHAT_IDS`) shared by the purchase tool and both watch use cases. The LLM never decides who may spend.
+
+x402 is a **different chain** from ENS:
+
+| Variable | Purpose |
+| --- | --- |
+| `X402_PAY_TO` | Treasury (same EOA as `AGENT_PRIVATE_KEY`, checksum) |
+| `X402_FACILITATOR_URL` | Default `https://x402.org/facilitator` |
 
 Scheduled purchases add Temporal. The bot and the worker must agree on the last two:
 
@@ -215,24 +235,21 @@ Bot: [t.me/DeFiCat_bot](https://t.me/DeFiCat_bot)
 
 Telegraf launches from `TelegramInboundAdapter.onModuleInit`, so the bot listens as soon as `bot.ts` starts. Only `BotModule` registers that adapter: the worker shares the same Telegraf provider to *send* notifications, and must never register the inbound adapter, or two processes would long-poll the same token.
 
-Ask for ENS data (`lookup_ens`), or a quote and a purchase (`purchase_ens`). A purchase needs the chat to be in `ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS` **and** an exact confirmation phrase.
-
-### 🤝 A2A
-
-🚧 WIP (wave 3)
-
-```bash
-# placeholder — replace with the real A2A path
-curl -i http://localhost:3000/a2a
-```
+Ask for ENS data (`lookup_ens`), or a quote and a purchase (`purchase_ens`). A purchase needs the chat to be in `ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS`, an exact confirmation phrase, and a settled x402 payment for `ens.buy.now` (or `ens.watch.arm` for a scheduled buy).
 
 ### 💳 Payment (x402)
 
-🚧 WIP (wave 2)
+ENS registration is on **mainnet**. The service fee is **USDC on Base Sepolia**.
 
-1. Call a gated service → expect **402** and payment instructions.
-2. Complete payment in the [UI](../ui/README.md) (or the wallet flow the agent returns).
-3. Retry the same service → Graph insight or 1inch result. 🎉
+1. Confirm buy or watch in Telegram → agent issues a payment session (token + UI link).
+2. UI / wallet completes x402 (`GET /pay/x402?token=…` then `POST /pay/x402/settle`).
+3. Agent verifies + settles via the facilitator, then **auto-runs** the paid intent (register now, or arm the watch).
+
+Details: [docs/X402_TELEGRAM.md](../docs/X402_TELEGRAM.md).
+
+### 🤝 A2A
+
+Not this demo. Same paid ENS SKUs would be the surface later.
 
 ## 🧪 Tests
 
@@ -252,7 +269,8 @@ The workflow is covered by `watchEnsDrop.e2e-spec.ts`, which runs under `pnpm te
 ## 🔗 Related
 
 - [UI](../ui/README.md) — SIWE and x402 payment screens
-- [How Temporal works](../docs/TEMPORAL_TUTORIAL.md) — replay, activities, history limits, versioning
+- [How Temporal works](../docs/TEMPORAL_TUTORIAL.md)
 - [ENS purchase design](../docs/ENS_PURCHASE.md)
+- [x402 + Telegram](../docs/X402_TELEGRAM.md)
 - [Hexagonal architecture](../docs/HEXAGONAL.md)
 - [Security](../docs/SECURITY.md)

@@ -13,6 +13,7 @@ import type {
   ConversationPort,
 } from '../../../app/ports/conversation/ConversationPort.js';
 import type { EnsLookupPort } from '../../../app/ports/graph/EnsLookupPort.js';
+import type { IssuePaymentSession } from '../../../app/use-cases/Billing/IssuePaymentSession.js';
 import type { PurchaseEnsName } from '../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
 import { createEnsLookupTool } from './tools/createEnsLookupTool.js';
 import { createEnsPurchaseTool } from './tools/createEnsPurchaseTool.js';
@@ -21,7 +22,6 @@ import {
   createIsoZoneFormatter,
   type IsoZoneFormatter,
 } from '../../time/createIsoZoneFormatter.js';
-import type { ScheduleEnsPurchase } from '../../../app/use-cases/EnsWatch/ScheduleEnsPurchase.js';
 import type { CancelEnsWatch } from '../../../app/use-cases/EnsWatch/CancelEnsWatch.js';
 import type { ListEnsWatches } from '../../../app/use-cases/EnsWatch/ListEnsWatches.js';
 
@@ -83,7 +83,7 @@ export class LangGraphConversationAdapter implements ConversationPort {
     systemPrompt: string;
     ensLookup: EnsLookupPort;
     purchaseEnsName: PurchaseEnsName;
-    scheduleEnsPurchase: ScheduleEnsPurchase;
+    issuePayment: IssuePaymentSession;
     cancelEnsWatch: CancelEnsWatch;
     listEnsWatches: ListEnsWatches;
     ensBuyerAllowedTelegramChatIds: ReadonlySet<string>;
@@ -112,11 +112,13 @@ export class LangGraphConversationAdapter implements ConversationPort {
     );
     const purchaseEns = createEnsPurchaseTool({
       purchaseEnsName: opts.purchaseEnsName,
+      issuePayment: opts.issuePayment,
       allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,
       networkLabel: opts.networkLabel,
     });
     const watchTools = createEnsWatchTools({
-      scheduleEnsPurchase: opts.scheduleEnsPurchase,
+      purchaseEnsName: opts.purchaseEnsName,
+      issuePayment: opts.issuePayment,
       cancelEnsWatch: opts.cancelEnsWatch,
       listEnsWatches: opts.listEnsWatches,
       allowedTelegramChatIds: opts.ensBuyerAllowedTelegramChatIds,

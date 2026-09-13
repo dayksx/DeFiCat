@@ -5,8 +5,10 @@ import { tool } from 'langchain';
 import { formatEther } from 'viem';
 import { z } from 'zod';
 import { DomainError } from '../../../../domain/errors/DomainError.js';
+import { PaymentError } from '../../../../app/use-cases/Billing/PaymentError.js';
+import type { IssuePaymentSession } from '../../../../app/use-cases/Billing/IssuePaymentSession.js';
+import type { PurchaseEnsName } from '../../../../app/use-cases/PurchaseEnsName/PurchaseEnsName.js';
 import { EnsWatchError } from '../../../../app/use-cases/EnsWatch/EnsWatchError.js';
-import type { ScheduleEnsPurchase } from '../../../../app/use-cases/EnsWatch/ScheduleEnsPurchase.js';
 import type { CancelEnsWatch } from '../../../../app/use-cases/EnsWatch/CancelEnsWatch.js';
 import type { ListEnsWatches } from '../../../../app/use-cases/EnsWatch/ListEnsWatches.js';
 import type { EnsWatchView } from '../../../../app/ports/watch/EnsWatchSchedulerPort.js';
@@ -34,12 +36,17 @@ const GUIDANCE: Record<string, string> = {
     'Tell the user the scheduler is unreachable and offer to try again in a moment.',
   NOT_AUTHORIZED:
     'Tell the user this chat cannot commit agent funds, or ask for the exact confirmation phrase.',
+  PAYMENT_REQUIRED:
+    'Tell the user to open payUrl and pay. Do not claim the watch is armed. The agent will message Telegram after payment.',
+  NOT_LINKED:
+    'Tell the user to sign in with Ethereum before paying. Do not retry the schedule.',
   UNEXPECTED_ERROR:
     'Tell the user the request failed. Never claim a watch was armed.',
 };
 
 export function createEnsWatchTools(opts: {
-  scheduleEnsPurchase: ScheduleEnsPurchase;
+  purchaseEnsName: PurchaseEnsName;
+  issuePayment: IssuePaymentSession;
   cancelEnsWatch: CancelEnsWatch;
   listEnsWatches: ListEnsWatches;
   allowedTelegramChatIds: ReadonlySet<string>;
@@ -73,32 +80,43 @@ export function createEnsWatchTools(opts: {
       }
 
       try {
-        const result = await opts.scheduleEnsPurchase.execute({
+        const valid = opts.purchaseEnsName.validate({
           label: input.name,
           years: input.years,
-          chatId,
         });
-
-        if (result.kind === 'buy-now') {
+        const quote = await opts.purchaseEnsName.quote(valid);
+        if (quote.available && quote.withinBudget) {
           return JSON.stringify({
             action: 'schedule',
             scheduled: false,
-            name: result.quote.name,
-            message: `${result.quote.name} is already available within budget. No watch is needed: use purchase_ens instead.`,
+            name: quote.name,
+            message: `${quote.name} is already available within budget. No watch is needed: use purchase_ens instead.`,
           });
         }
 
-        logger.log(`Armed watch ${result.workflowId} for chat ${chatId}`);
+        logger.log(
+          `Invoicing ENS watch for ${quote.name} (${quote.years}y)`,
+        );
+        const invoice = await opts.issuePayment.execute({
+          channel: 'telegram',
+          recipientId: chatId,
+          intent: {
+            type: 'ens.schedule',
+            label: valid.label,
+            years: valid.years,
+          },
+        });
         return JSON.stringify({
           action: 'schedule',
-          scheduled: true,
-          // Retourné ici pour que le modèle n'ait pas à re-lister : la
-          // visibility de Temporal est en cohérence différée.
-          watch: describeWatch(
-            { ...result.watch, workflowId: result.workflowId, status: 'scheduled', armedAt: new Date().toISOString() },
-            opts.toLocalIso,
-          ),
-          message: `Watching ${result.watch.name}. It will be bought automatically once it drops and its price is within budget.`,
+          scheduled: false,
+          code: 'PAYMENT_REQUIRED',
+          sku: invoice.offer.sku,
+          amountUsdc: (
+            Number(invoice.offer.amountAtomic) / 1_000_000
+          ).toString(),
+          payUrl: invoice.payUrl,
+          expiresAt: invoice.expiresAt.toISOString(),
+          guidance: GUIDANCE.PAYMENT_REQUIRED,
         });
       } catch (error) {
         return failure(logger, 'schedule', input.name, error);
@@ -107,7 +125,7 @@ export function createEnsWatchTools(opts: {
     {
       name: 'schedule_ens',
       description:
-        'Watch a .eth name that cannot be bought right now, and buy it automatically the moment it drops and its price falls within the agent budget. Only for names that purchase_ens reported as taken or over budget: never call it for a name that is already available within budget. Requires the exact confirmation phrase, because the purchase happens later without asking again.',
+        'Invoice a watch for a .eth name that cannot be bought right now. After USDC payment the agent buys it automatically once it drops within budget. Only for names that purchase_ens reported as taken or over budget: never call it for a name that is already available within budget. Requires the exact confirmation phrase. This call returns a payUrl; it does not arm the watch yet.',
       schema: z.object({
         name: z.string().describe('Second-level ENS name, e.g. deficat.eth'),
         years: z.number().int().min(1).max(5).default(1),
@@ -229,14 +247,14 @@ function failure(
     error instanceof Error ? error.stack : undefined,
   );
 
-  if (error instanceof EnsWatchError) {
+  if (error instanceof EnsWatchError || error instanceof PaymentError) {
     return JSON.stringify({
       action,
       scheduled: false,
       code: error.code,
       retryable: error.retryable,
       error: error.message,
-      guidance: GUIDANCE[error.code],
+      guidance: GUIDANCE[error.code] ?? GUIDANCE.UNEXPECTED_ERROR,
     });
   }
 
@@ -273,7 +291,7 @@ function describe(error: unknown): string {
 
 function confirmationPhrase(name: string, years: number): string {
   const label = name.trim().toLowerCase().replace(/\.eth$/, '');
-  return `CONFIRM WATCH ${label.toUpperCase()}.ETH FOR ${years} YEAR${years === 1 ? '' : 'S'}`;
+  return `CONFIRM WATCH AND BUY ${label.toUpperCase()}.ETH FOR ${years} YEAR${years === 1 ? '' : 'S'}`;
 }
 
 function normalize(value: string): string {

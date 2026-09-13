@@ -60,8 +60,29 @@ import { InMemoryIdentityStore } from '../infrastructure/adapters/identity/InMem
 import { ViemSiweNonceAdapter } from '../infrastructure/adapters/siwe/ViemSiweNonceAdapter.js';
 import { ViemSiweVerifierAdapter } from '../infrastructure/adapters/siwe/ViemSiweVerifierAdapter.js';
 import { SiweAuthController } from '../infrastructure/adapters/http/SiweAuthController.js';
+import {
+  PAYMENT_STORE_PORT,
+  type PaymentStorePort,
+} from '../app/ports/billing/PaymentStorePort.js';
+import {
+  X402_FACILITATOR_PORT,
+  type X402FacilitatorPort,
+} from '../app/ports/billing/X402FacilitatorPort.js';
+import {
+  PaymentPolicy,
+  PAYMENT_SESSION_TTL_MS,
+} from '../domain/billing/PaymentPolicy.js';
+import type { PaymentIssuance } from '../app/use-cases/Billing/PaymentIssuance.js';
+import { IssuePaymentSession } from '../app/use-cases/Billing/IssuePaymentSession.js';
+import { GetX402Requirements } from '../app/use-cases/Billing/GetX402Requirements.js';
+import { FulfillPaidIntent } from '../app/use-cases/Billing/FulfillPaidIntent.js';
+import { SettlePaymentAndFulfill } from '../app/use-cases/Billing/SettlePaymentAndFulfill.js';
+import { InMemoryPaymentStore } from '../infrastructure/adapters/billing/InMemoryPaymentStore.js';
+import { HttpX402FacilitatorAdapter } from '../infrastructure/adapters/x402/HttpX402FacilitatorAdapter.js';
+import { X402PayController } from '../infrastructure/adapters/http/X402PayController.js';
 
 const SIWE_ISSUANCE = Symbol('SiweIssuance');
+const PAYMENT_ISSUANCE = Symbol('PaymentIssuance');
 /**
  * Composition root du processus bot : Nest câble ports → adapters, sans métier.
  * Les adapters partagés avec le worker viennent d'`EnsCoreModule`.
@@ -73,7 +94,7 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
  */
 @Module({
   imports: [EnsCoreModule],
-  controllers: [SiweAuthController],
+  controllers: [SiweAuthController, X402PayController],
   providers: [
     // Domaine : id + persona. Persona → LangGraph ; canaux → HandleIncomingMessage.
     {
@@ -87,6 +108,7 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
             'The user signed in with Ethereum (SIWE) before this chat. Every turn includes a verified wallet address and link time — treat that as ground truth. If they ask who they are, their address, or when they connected, answer from it. Never invent or change the address.',
             'For ENS data use lookup_ens. For ENS availability, quotes, and purchases use purchase_ens. Always quote first and never claim a purchase succeeded unless purchase_ens returns purchased=true.',
             'When a quote comes back with schedulable=true, meaning the name is taken or above budget, offer schedule_ens so the name is bought automatically once it drops within budget. Never offer schedule_ens for a name that is already available within budget: buy it instead.',
+            'Paid actions return PAYMENT_REQUIRED with payUrl. Never invent a tx hash. Never ask CONFIRM again after they paid.',
             'Use list_ens_watches whenever the user asks what is scheduled, watched or pending, and cancel_ens_watch to stop one. Report the statuses exactly as the tools return them.',
             'Use web search for news and prices.',
           ].join(' '),
@@ -102,9 +124,9 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
         ensLookup: EnsLookupPort,
         purchaseEnsName: PurchaseEnsName,
         ensBuyerChatIds: ReadonlySet<string>,
-        scheduleEnsPurchase: ScheduleEnsPurchase,
         cancelEnsWatch: CancelEnsWatch,
         listEnsWatches: ListEnsWatches,
+        issuePayment: IssuePaymentSession,
         network: EthereumNetwork,
       ) =>
         LangGraphConversationAdapter.create({
@@ -115,7 +137,7 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
           systemPrompt: agent.persona,
           ensLookup,
           purchaseEnsName,
-          scheduleEnsPurchase,
+          issuePayment,
           cancelEnsWatch,
           listEnsWatches,
           ensBuyerAllowedTelegramChatIds: ensBuyerChatIds,
@@ -130,9 +152,9 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
         ENS_LOOKUP_PORT,
         PurchaseEnsName,
         ENS_BUYER_CHAT_IDS,
-        ScheduleEnsPurchase,
         CancelEnsWatch,
         ListEnsWatches,
+        IssuePaymentSession,
         ETHEREUM_NETWORK,
       ],
     },
@@ -223,6 +245,105 @@ const SIWE_ISSUANCE = Symbol('SiweIssuance');
         CLOCK_PORT,
         SiweBindPolicy,
         SIWE_ISSUANCE,
+      ],
+    },
+    { provide: PAYMENT_STORE_PORT, useClass: InMemoryPaymentStore },
+    {
+      provide: PaymentPolicy,
+      useFactory: (config: ConfigService) => {
+        const minutes = config.get<string>('X402_SESSION_TTL_MINUTES');
+        return new PaymentPolicy(
+          minutes === undefined
+            ? PAYMENT_SESSION_TTL_MS
+            : Number(minutes) * 60_000,
+        );
+      },
+      inject: [ConfigService],
+    },
+    {
+      provide: PAYMENT_ISSUANCE,
+      useFactory: (config: ConfigService): PaymentIssuance => ({
+        payTo: config.getOrThrow<string>('X402_PAY_TO'),
+        chainId: Number(config.getOrThrow<string>('PAYMENT_CHAIN_ID')),
+        asset: config.getOrThrow<string>('X402_USDC_ADDRESS'),
+        network: `eip155:${config.getOrThrow<string>('PAYMENT_CHAIN_ID')}`,
+        uiOrigin: config.getOrThrow<string>('UI_ORIGIN'),
+        extraName: 'USDC',
+        extraVersion: '2',
+      }),
+      inject: [ConfigService],
+    },
+    {
+      provide: X402_FACILITATOR_PORT,
+      useFactory: (config: ConfigService) =>
+        new HttpX402FacilitatorAdapter(
+          config.getOrThrow<string>('X402_FACILITATOR_URL'),
+        ),
+      inject: [ConfigService],
+    },
+    {
+      provide: IssuePaymentSession,
+      useFactory: (
+        identities: IdentityStorePort,
+        payments: PaymentStorePort,
+        tokens: TokenGeneratorPort,
+        clock: ClockPort,
+        policy: PaymentPolicy,
+        issuance: PaymentIssuance,
+      ) =>
+        new IssuePaymentSession(
+          identities, payments, tokens, clock, policy, issuance,
+        ),
+      inject: [
+        IDENTITY_STORE_PORT,
+        PAYMENT_STORE_PORT,
+        TOKEN_GENERATOR_PORT,
+        CLOCK_PORT,
+        PaymentPolicy,
+        PAYMENT_ISSUANCE,
+      ],
+    },
+    {
+      provide: GetX402Requirements,
+      useFactory: (
+        payments: PaymentStorePort,
+        clock: ClockPort,
+        policy: PaymentPolicy,
+        issuance: PaymentIssuance,
+      ) => new GetX402Requirements(payments, clock, policy, issuance),
+      inject: [PAYMENT_STORE_PORT, CLOCK_PORT, PaymentPolicy, PAYMENT_ISSUANCE],
+    },
+    {
+      provide: FulfillPaidIntent,
+      useFactory: (
+        purchase: PurchaseEnsName,
+        schedule: ScheduleEnsPurchase,
+        messaging: OutboundMessagingPort,
+      ) => new FulfillPaidIntent(purchase, schedule, messaging),
+      inject: [PurchaseEnsName, ScheduleEnsPurchase, MESSAGING_PORT],
+    },
+    {
+      provide: SettlePaymentAndFulfill,
+      useFactory: (
+        payments: PaymentStorePort,
+        facilitator: X402FacilitatorPort,
+        clock: ClockPort,
+        policy: PaymentPolicy,
+        messaging: OutboundMessagingPort,
+        getRequirements: GetX402Requirements,
+        fulfill: FulfillPaidIntent,
+      ) =>
+        new SettlePaymentAndFulfill(
+          payments, facilitator, clock, policy, messaging, getRequirements, fulfill,
+        ),
+      inject: [
+        PAYMENT_STORE_PORT,
+        X402_FACILITATOR_PORT,
+        CLOCK_PORT,
+        PaymentPolicy,
+        MESSAGING_PORT,
+        GetX402Requirements,
+        FulfillPaidIntent,
       ],
     },
     // Driving : Telegraf écoute Telegram et appelle HandleIncomingMessage.
