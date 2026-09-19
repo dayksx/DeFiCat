@@ -92,3 +92,4 @@ Next 16, React 19, Tailwind 4, wagmi 3, viem, pnpm.
 - [SIWE + Telegram](../docs/SIWE_TELEGRAM.md)
 - [Hexagonal architecture](../docs/HEXAGONAL.md)
 - [Security](../docs/SECURITY.md)
+- [Bootstrap Next.js](../docs/NEXTJS_BOOTSTRAP.md)

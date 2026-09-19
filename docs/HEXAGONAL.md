@@ -67,6 +67,8 @@ Example: “pay with x402, then return a Graph insight”.
 
 Build order: **domain → ports → use case → fake adapter → one driving adapter → real adapters**.
 
+Mindset, inbound vs outbound, Nest tokens, SKUs: [HEXAGONAL_METHODOLOGY.md](./HEXAGONAL_METHODOLOGY.md).
+
 ## Naming
 
 | Thing | Convention |

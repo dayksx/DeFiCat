@@ -1,53 +1,75 @@
 # 🐱 DeFiCat
 
-Paid AI agents for onchain insights and DeFi operations: talk on Telegram or A2A, pay with x402, optionally authenticate and settle from the web UI. Insights come from **The Graph**; swaps and other DeFi actions go through **1inch**. Meow, then pay, then play. 😸
+**ETHGlobal Online 2026** — prize tracks: **[The Graph](https://thegraph.com)** and **[ENS](https://ens.domains)**.
+
+Telegram agent that **looks up** ENS names with The Graph, then **buys** them (now or when they drop) after an **x402** payment. Names like `kikoulol.eth` and subnames like `degen.kikoulol.eth`. Meow, pay, register. 😸
+
+A later wave (not in this demo) is paid DeFi services on the same rails.
 
 ## 🎯 Problem & demo pitch
 
-Real-time onchain data, in a decentralized way, is still hard to reach. Using that live data to actually do the right onchain move is even harder. DeFiCat lets you (or another agent) ask in Telegram or A2A, pay that one request with **x402**, and get the result: indexed data from **The Graph**, or a swap via **1inch**.
+ENS data is public, but acting on it from chat is still clunky: is `kikoulol.eth` free, who owns it, when does it expire, can I buy it, can I sit on a taken name until it drops?
+
+DeFiCat answers that in Telegram. **The Graph** is the read path (owner, expiry, grace). **ENS** is the write path (register now, or arm a Temporal watch). **x402** is the gate: 0.01 USDC to buy now, 0.1 USDC to schedule the drop buy. The agent spends its own ETH on mainnet; the user pays the service fee in USDC on Base Sepolia.
 
 ```text
-User / peer agent
-        │
-        ├─ Telegram ──► Agents (NestJS) ──► The Graph (insights) 📊
-        ├─ A2A     ──►        │          └── 1inch (DeFi ops) 🔄
-        └─ Browser ──► UI (Next.js) ── SIWE + x402 payment 💳 ─┘
+User
+  ├─ Telegram ──► Agents (NestJS)
+  │                 ├─ The Graph  → lookup (2LD + subnames)
+  │                 ├─ ENS        → buy now / buy on drop
+  │                 └─ Temporal   → durable watch until expiry
+  ├─ Other agents ──► A2A HTTP (x402 on buy / schedule)
+  └─ Browser ──► UI (Next.js) ── SIWE + x402 ──► Agents
 ```
 
 ## ✨ Features
 
-- 💬 Telegram agent ([t.me/DeFiCat_bot](https://t.me/DeFiCat_bot)) that sells services (insights and DeFi operations)
-- 🤝 A2A agent that other agents can call with the same paid services
-- 📊 Onchain insights via [The Graph](https://thegraph.com)
-- 🛒 ENS registrations from chat, capped by budget and restricted to an allowlist
-- ⏳ Scheduled ENS purchase: watch a taken name and buy it the moment it drops, via [Temporal](https://temporal.io)
-- 🔄 DeFi operations (swaps and related) via [1inch](https://1inch.io)
-- 💳 x402 payment required before the service runs
-- 🖥️ Web UI to pay for those services and to sign in with Ethereum (SIWE)
+| Feature | What it does | Status |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 💬 Telegram bot | Chat at [t.me/DeFiCat_bot](https://t.me/DeFiCat_bot) | ✅ |
+| 📊 ENS lookup | Owner, expiry, grace via [The Graph](https://thegraph.com) — `kikoulol.eth`, `degen.kikoulol.eth`, or an address | ✅ |
+| 🛒 Buy now | Quote + commit/reveal for an available **2LD** `.eth`, after **0.01 USDC** x402 (`ens.buy.now`) | ✅ / in progress |
+| ⏳ Schedule buy | Watch a taken name and buy when it drops, after **0.1 USDC** x402 (`ens.watch.arm`) | ✅ / in progress |
+| 👛 SIWE | Bind Telegram chat ↔ wallet in the UI | ✅ |
+| 💳 x402 | Pay the SKU, then the agent auto-runs the buy or arms the watch | in progress |
+| 🧩 Subname registration | Create a subname such as `me.kikoulol.eth` under an agent-owned wrapped parent | ✅ |
+| 🔄 DeFi services | Swaps / other paid ops on the same x402 catalogue | **not in this demo** |
+| 🤝 A2A | Other agents call the same paid ENS services over HTTP + x402 | ✅ |
+
+Lookups stay free. Telegram spends still need an allowlisted chat, an exact confirmation phrase, and a successful x402 receipt. Other agents use the A2A endpoints: free insight, 0.01 USDC to buy, 0.1 USDC to schedule.
+
+## 🏆 Hackathon
+
+Built for **ETHGlobal Online 2026**.
+
+| Track | How we use it |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| **The Graph** | ENS subgraph reads: availability, owner, expiry, grace period — including subnames that have no registrar row |
+| **ENS** | Register `.eth` 2LDs from chat; watch drops; product goal includes subnames |
 
 ## 🏗️ Architecture
 
 | Package | Stack | Role | README |
-| --- | --- | --- | --- |
-| [`agents/`](./agents) | NestJS, Node.js, TypeScript | Telegram + A2A, x402, The Graph, ENS, 1inch | [agents/README.md](./agents/README.md) |
-| [`ui/`](./ui) | Next.js, React, TypeScript | Payment UI and SIWE wallet auth | [ui/README.md](./ui/README.md) |
+| --------------------- | ------------------ | ---------------------------------------- | -------------------------------------- |
+| [`agents/`](./agents) | NestJS, TypeScript | Telegram, ENS, The Graph, Temporal, x402 | [agents/README.md](./agents/README.md) |
+| [`ui/`](./ui) | Next.js, React | SIWE + x402 payment pages | [ui/README.md](./ui/README.md) |
 
-Hexagonal layout and import rules: [docs/HEXAGONAL.md](./docs/HEXAGONAL.md). Security baseline: [docs/SECURITY.md](./docs/SECURITY.md).
+Hexagonal layout: [docs/HEXAGONAL.md](./docs/HEXAGONAL.md). Security: [docs/SECURITY.md](./docs/SECURITY.md). Docs index: [docs/README.md](./docs/README.md).
 
 ## 📁 Repo layout
 
 ```text
 .
-├── agents/     # NestJS agents (Telegram, A2A, x402)
-├── ui/         # Next.js payment + SIWE (scaffold)
-└── docs/       # Architecture and security guidelines
+├── agents/     # NestJS bot + Temporal worker
+├── ui/         # Next.js SIWE + pay
+└── docs/       # Architecture, ENS, x402, Temporal
 ```
 
 ## 🚀 Quick start (full stack)
 
 **Prerequisites:** Node.js 20+, [pnpm](https://pnpm.io/installation) (`corepack enable` then `corepack prepare pnpm@latest --activate`).
 
-Agents listen on `PORT` (default **3000**). Run the UI on another port (e.g. **3001**) so they do not collide.
+Agents listen on `PORT` (default **3000**). Run the UI on **3001**.
 
 ```bash
 # 1. Agents
@@ -56,54 +78,54 @@ cp .env.example .env   # fill values — see agents/README.md
 pnpm install
 pnpm run start:dev
 
-# 2. UI (in another terminal)
+# 2. UI (another terminal)
 cd ui
 cp .env.example .env   # fill values — see ui/README.md
 pnpm install
-pnpm run dev -- --port 3001
+pnpm run dev --port 3001
 ```
 
 - 🤖 Agents: `http://localhost:3000`
 - 🖥️ UI: `http://localhost:3001`
 
-Scheduled ENS purchases need two more processes, a Temporal server and a worker, because a watch can wait months and must survive a restart. Steps are in [agents/README.md](./agents/README.md#-scheduled-purchases-temporal).
-
-Per-service env vars and platform steps live in the package READMEs, not here.
+Scheduled buys need a Temporal server and a worker. Steps: [agents/README.md](./agents/README.md#-scheduled-purchases-temporal).
 
 ## 🎬 Demo script (jury)
 
-1. 💬 Message the Telegram bot at [t.me/DeFiCat_bot](https://t.me/DeFiCat_bot) (or call the A2A endpoint) asking for an insight (**The Graph**) or a DeFi operation (**1inch**).
-2. 👛 Agent sends the connection link (Sign-In with Ethereum) or the payment link.
-3. 💳 Follow the x402 payment flow in the UI.
-4. 🎉 After payment, receive the insight or the DeFi result from the agent.
+1. Open [t.me/DeFiCat_bot](https://t.me/DeFiCat_bot). Bind the wallet via the SIWE link if asked.
+2. **Lookup:** “Who owns `kikoulol.eth`?” / “Is `degen.kikoulol.eth` taken?” → The Graph.
+3. **Buy now** (name available, chat allowlisted): confirm the phrase → pay **0.01 USDC** (x402) in the UI → agent registers the 2LD.
+4. **Schedule buy** (name taken or over budget): confirm the watch phrase → pay **0.1 USDC** → Temporal waits for the drop and buys within budget.
 
-A2A URL and payment links will land here once those adapters are wired.
+DeFi (swaps, DCA, …) is explicitly out of this demo.
 
 ## 🧰 Tech stack (high level)
 
-- 🤖 **Agents:** NestJS, TypeScript, Telegraf, LangChain / LangGraph, x402
-- 📊 **Onchain insights:** [The Graph](https://thegraph.com)
-- 🛒 **ENS registrations:** [viem](https://viem.sh) against the ENS controller
-- ⏳ **Durable scheduling:** [Temporal](https://temporal.io) workflows and a dedicated worker
-- 🔄 **DeFi operations:** [1inch](https://1inch.io)
-- 🖥️ **UI:** Next.js (App Router), React, TypeScript, SIWE, wallet connection
-- 💳 **Payments:** HTTP 402 / x402 against agent services
+- 🤖 **Agents:** NestJS, TypeScript, Telegraf, LangGraph
+- 📊 **Reads:** [The Graph](https://thegraph.com) ENS subgraph
+- 🛒 **Writes:** [viem](https://viem.sh) → ETHRegistrarController (mainnet)
+- ⏳ **Watches:** [Temporal](https://temporal.io)
+- 🖥️ **UI:** Next.js, wagmi, SIWE
+- 💳 **Payments:** x402 (`exact`, USDC on Base Sepolia)
 
 ## 🔐 Environment overview
 
 Copy each package’s `.env.example`. Typical names (values stay in those files):
 
 | Area | Examples |
-| --- | --- |
-| Agents | `PORT`, `TELEGRAM_BOT_TOKEN`, LLM keys, `THEGRAPH_API_KEY`, 1inch, x402 |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| Agents | `PORT`, `TELEGRAM_BOT_TOKEN`, LLM keys, `THEGRAPH_API_KEY` |
 | ENS purchases | `ETHEREUM_RPC_URL`, `AGENT_PRIVATE_KEY`, `ENS_MAX_PURCHASE_ETH`, `ENS_BUYER_ALLOWED_TELEGRAM_CHAT_IDS` |
 | Temporal | `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `TEMPORAL_TASK_QUEUE` |
-| UI | `NEXT_PUBLIC_AGENTS_URL`, chain / SIWE / wallet connector keys |
+| x402 | `X402_PAY_TO`, `X402_FACILITATOR_URL` (USDC Base Sepolia; ENS stays on `CHAIN_ID`) |
+| UI | `NEXT_PUBLIC_AGENTS_URL`, `NEXT_PUBLIC_CHAIN_ID` |
 
 ## 🔗 Links
 
 - [Agents](./agents/README.md)
 - [UI](./ui/README.md)
-- [ENS purchase design](./docs/ENS_PURCHASE.md)
+- [Docs index](./docs/README.md)
+- [ENS purchase](./docs/ENS_PURCHASE.md)
+- [x402 + Telegram](./docs/X402_TELEGRAM.md)
 - [Hexagonal architecture](./docs/HEXAGONAL.md)
 - [Security](./docs/SECURITY.md)
